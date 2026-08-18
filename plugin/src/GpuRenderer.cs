@@ -2869,16 +2869,63 @@ float4 PS(VSOut i) : SV_Target {
 
     if (goboAmount > 0.0) {
         float3 zpre = c;
+        float2 gdir = float2(cos(goboAngle), sin(goboAngle));
+        float gd = (hasDepth != 0) ? saturate(lin) : 0.4;
+
         float2 gp = float2(i.uv.x * asp, i.uv.y);
+        gp += gdir * (gd - 0.30) * 0.42;
+
+        float2 gk = gp - float2(0.5 * asp, 0.5);
+        float key = 1.0 / (1.0 + dot(gk, gdir) * 0.42);
+        gp = float2(0.5 * asp, 0.5) + gk * key;
+
         float gca = cos(goboAngle), gsa = sin(goboAngle);
         gp = float2(gp.x * gca - gp.y * gsa, gp.x * gsa + gp.y * gca) * max(goboScale, 0.5);
-        float gsoft = max(goboSoft, 0.02);
+
+        float gsoft = max(goboSoft, 0.02) * (0.45 + gd * 1.45) * key;
         float lit;
-        if (goboPattern == 0) lit = smoothstep(0.5 - gsoft, 0.5 + gsoft, frac(gp.y));
-        else if (goboPattern == 1) { float2 bd = min(frac(gp), 1.0 - frac(gp)); lit = 1.0 - smoothstep(0.10 + gsoft, 0.0, min(bd.x, bd.y)); }
-        else if (goboPattern == 2) lit = smoothstep(0.28, 0.5, Voronoi(gp));
-        else lit = smoothstep(0.38, 0.68, Fbm(gp * 0.7, 4));
-        c *= lerp(1.0, lerp(0.28, 1.0, lit), saturate(goboAmount));
+
+        if (goboPattern == 0) {
+            float row = floor(gp.y);
+            float w = 0.44 + 0.12 * Hash21(float2(row, 3.7));
+            float y = frac(gp.y);
+            lit = smoothstep(w - gsoft, w + gsoft, y) * smoothstep(1.0 + gsoft * 0.4, 1.0 - gsoft * 1.7, y);
+            lit += smoothstep(w + gsoft * 2.2, w + gsoft * 0.3, y) * 0.30;
+        }
+        else if (goboPattern == 1) {
+            float2 f = frac(gp);
+            float2 d = min(f, 1.0 - f);
+            lit = smoothstep(0.045, 0.045 + gsoft * 1.3, min(d.x, d.y));
+            float2 f2 = frac(gp * 0.5);
+            float2 d2 = min(f2, 1.0 - f2);
+            lit *= smoothstep(0.030, 0.030 + gsoft * 1.8, min(d2.x, d2.y));
+            lit *= 0.90 + 0.10 * Hash21(floor(gp) + 11.0);
+        }
+        else if (goboPattern == 2) {
+            float2 lp = gp * 2.7;
+            float2 cf = frac(lp) - 0.5;
+            float ring = abs(length(cf) - 0.33);
+            float thread = smoothstep(0.085 + gsoft, 0.015, ring);
+            float2 kp = frac(lp + 0.5) - 0.5;
+            thread = max(thread, smoothstep(0.11 + gsoft, 0.02, length(kp)) * 0.85);
+            float2 sp2 = frac(lp * 2.0) - 0.5;
+            thread = max(thread, smoothstep(0.055 + gsoft, 0.01, length(sp2)) * 0.45);
+            lit = 1.0 - thread * 0.92;
+        }
+        else {
+            float v1 = Voronoi(gp * 1.15);
+            float v2 = Voronoi(gp * 2.60 + 7.3);
+            float gap = saturate(v1 * 1.45) * saturate(0.45 + v2 * 1.10);
+            lit = smoothstep(0.26, 0.26 + gsoft * 2.6 + 0.10, gap);
+            lit = saturate(lit + Fbm(gp * 3.1, 2) * 0.10 - 0.05);
+        }
+
+        lit = saturate(lit);
+        float travel = saturate(0.5 - dot(gk, gdir) * 0.85);
+        float amt = saturate(goboAmount) * (0.55 + 0.45 * travel);
+
+        c *= lerp(1.0, lerp(0.24, 1.0, lit), amt);
+        c += c * lit * amt * 0.12;
         c = lerp(zpre, c, ZoneMask(zoneGobo, lin, scopeSplit, scopeSoft));
     }
 
