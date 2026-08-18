@@ -911,7 +911,7 @@ public sealed class MainWindow : Window, IDisposable
             cfg.ShadowSpread = Knob("Spread", cfg.ShadowSpread, 0f, 1f, Defaults.ShadowSpread, "How far the shadow reaches from the body. Small = a tight contact shadow, large = a soft distant one.");
             cfg.ShadowOffsetX = Knob("Offset X", cfg.ShadowOffsetX, -1f, 1f, Defaults.ShadowOffsetX, "Push the shadow sideways — away from your light source.");
             cfg.ShadowOffsetY = Knob("Offset Y", cfg.ShadowOffsetY, -1f, 1f, Defaults.ShadowOffsetY, "Push the shadow up/down. Negative drops it below (light from above).");
-            cfg.ShadowSoftness = Knob("Softness", cfg.ShadowSoftness, 0f, 1f, Defaults.ShadowSoftness, "Penumbra falloff: 0 = a defined edge (hard key light), 1 = a soft diffuse falloff (overcast / softbox).");
+            cfg.ShadowSoftness = Knob("Light size", cfg.ShadowSoftness, 0f, 1f, Defaults.ShadowSoftness, "Penumbra falloff: 0 = a defined edge (hard key light), 1 = a soft diffuse falloff (overcast / softbox).");
             cfg.ShadowContact = Knob("Contact darkness", cfg.ShadowContact, 0f, 1f, Defaults.ShadowContact, "An extra tight dark core right where the body meets the background — the occlusion that really sells the contact.");
             var sc = ColorPick("Shadow color", new Vector3(cfg.ShadowR, cfg.ShadowG, cfg.ShadowB), new Vector3(Defaults.ShadowR, Defaults.ShadowG, Defaults.ShadowB));
             cfg.ShadowR = sc.X; cfg.ShadowG = sc.Y; cfg.ShadowB = sc.Z;
@@ -923,10 +923,10 @@ public sealed class MainWindow : Window, IDisposable
         {
             ImGui.TextDisabled("A soft shadow decal you place under the subject to ground them.\nDrag Position/Size so it sits at the feet. Works on any backdrop.");
             cfg.GroundShadow = Knob("Opacity", cfg.GroundShadow, 0f, 1f, Defaults.GroundShadow, "How dark the shadow is (0 = off).");
-            cfg.GroundShadowX = Knob("Position X", cfg.GroundShadowX, -0.6f, 0.6f, Defaults.GroundShadowX, "Horizontal position (0 = centre).");
-            cfg.GroundShadowY = Knob("Position Y", cfg.GroundShadowY, 0.3f, 1f, Defaults.GroundShadowY, "Vertical position — set to the subject's feet.");
-            cfg.GroundShadowW = Knob("Width", cfg.GroundShadowW, 0.03f, 0.6f, Defaults.GroundShadowW, "Half-width of the shadow ellipse.");
-            cfg.GroundShadowH = Knob("Height", cfg.GroundShadowH, 0.01f, 0.3f, Defaults.GroundShadowH, "Half-height — keep low for a flat, ground-hugging shadow.");
+            cfg.GroundShadowX = Knob("Position X", cfg.GroundShadowX, -1.5f, 1.5f, Defaults.GroundShadowX, "Horizontal position (0 = centre). Reaches past both edges, for a subject standing off to the side.");
+            cfg.GroundShadowY = Knob("Position Y", cfg.GroundShadowY, -0.5f, 2f, Defaults.GroundShadowY, "Vertical position, set to the subject's feet. Runs past the top and bottom of frame, for a low camera or feet below the crop.");
+            cfg.GroundShadowW = Knob("Width", cfg.GroundShadowW, 0.02f, 2f, Defaults.GroundShadowW, "Half-width of the shadow ellipse. Wide enough to take in the whole floor under a raking light.");
+            cfg.GroundShadowH = Knob("Height", cfg.GroundShadowH, 0.005f, 1.2f, Defaults.GroundShadowH, "Half-height. Low for a flat ground-hugging shadow; raise it for a long one thrown toward the camera.");
             cfg.GroundRipple = Knob("Softness", cfg.GroundRipple, 0f, 1f, Defaults.GroundRipple, "How soft the shadow's edge is.");
             var gt = ColorPick("Shadow tint", new Vector3(cfg.GroundTintR, cfg.GroundTintG, cfg.GroundTintB), new Vector3(Defaults.GroundTintR, Defaults.GroundTintG, Defaults.GroundTintB));
             cfg.GroundTintR = gt.X; cfg.GroundTintG = gt.Y; cfg.GroundTintB = gt.Z;

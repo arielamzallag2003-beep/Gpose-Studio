@@ -487,6 +487,19 @@ float DepthCoverage(float2 duvC, float2 rad, float linC, float bias, float sgn) 
     return cov * 0.0625;
 }
 
+float2 BlockerSearch(float2 duvC, float2 rad, float linC, float bias) {
+    float cov = 0.0, sum = 0.0;
+    [unroll] for (int k = 0; k < 16; k++) {
+        float a = (float)k * 2.39996323;
+        float r = sqrt(((float)k + 0.5) * 0.0625);
+        float2 o = float2(cos(a), sin(a)) * r * rad;
+        float z = LinearizeL(duvC + o);
+        float w = smoothstep(0.0, max(bias, 1e-4), linC - z);
+        cov += w; sum += z * w;
+    }
+    return float2(cov * 0.0625, (cov > 1e-4) ? sum / cov : linC);
+}
+
 float Luma(float3 c) { return dot(c, float3(0.299, 0.587, 0.114)); }
 
 float RimSide(float2 uv, float asp) {
@@ -2691,15 +2704,27 @@ float4 PS(VSOut i) : SV_Target {
         float notSubj = ZoneMask(zoneShadow, lin, shadowDepth, 0.04);
         if (notSubj > 0.001) {
             float2 tx = float2(texelX, texelY);
-            float2 srad = tx * (3.0 + shadowSpread * 70.0);
             float2 soff = float2(shadowOffsetX, -shadowOffsetY) * tx * 70.0;
-            float cov = DepthCoverage(duv + soff, srad, lin, 0.015, -1.0);
-            float sh = pow(saturate(cov), lerp(0.55, 2.4, saturate(shadowSoftness)));
+            float bias = 0.010 + lin * 0.030;
+
+            float2 bs = BlockerSearch(duv + soff, tx * 20.0, lin, bias);
+            float sep = saturate(max(lin - bs.y, 0.0) * 14.0);
+
+            float src = 3.0 + shadowSpread * 70.0;
+            float pw = clamp(src * (0.06 + sep * 1.25), 1.5, 160.0);
+            float cov = DepthCoverage(duv + soff, tx * pw, lin, bias, -1.0);
+
+            float sh = pow(saturate(cov), lerp(0.80, 1.90, saturate(shadowSoftness)));
+
+            sh *= 1.0 - sep * 0.55;
+
             if (shadowContact > 0.0) {
-                float cc = DepthCoverage(duv + soff * 0.35, srad * 0.28, lin, 0.010, -1.0);
-                sh = saturate(sh + pow(saturate(cc), 0.8) * shadowContact);
+                float ao = DepthCoverage(duv + soff * 0.30, tx * 6.0, lin, bias * 0.55, -1.0);
+                sh = saturate(sh + pow(saturate(ao), 0.9) * shadowContact * (1.0 - sep * 0.85));
             }
-            c = lerp(c, c * float3(shadowR, shadowG, shadowB), saturate(sh * shadowAmount) * notSubj);
+
+            float3 stint = saturate(float3(shadowR, shadowG, shadowB));
+            c = lerp(c, c * stint, saturate(sh * shadowAmount) * notSubj);
         }
     }
 
