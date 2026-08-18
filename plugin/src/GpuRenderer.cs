@@ -235,6 +235,9 @@ public sealed class GpuRenderer : IDisposable
         public float BgBPatMatB; public float BgBPatMatTint; public float PatPadA; public float PatPadB;
         public float PatCol4R; public float PatCol4G; public float PatCol4B; public float PatCol5R;
         public float PatCol5G; public float PatCol5B; public float PatColPad3; public float PatColPad4;
+        public int GroundMode; public float GroundCastAngle; public float GroundCastLen; public float GroundPad0;
+        public int EnFinal; public float FinalExposure; public float FinalContrast; public float FinalSat;
+        public float FinalTemp; public float FinalLift; public float FinalGamma; public float FinalGain;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -408,6 +411,9 @@ cbuffer P : register(b0) {
     float bgBPatMatB; float bgBPatMatTint; float patPadA; float patPadB;
     float patCol4R; float patCol4G; float patCol4B; float patCol5R;
     float patCol5G; float patCol5B; float patColPad3; float patColPad4;
+    int groundMode; float groundCastAngle; float groundCastLen; float groundPad0;
+    int enFinal; float finalExposure; float finalContrast; float finalSat;
+    float finalTemp; float finalLift; float finalGamma; float finalGain;
 };
 Texture2D colorTex : register(t0);
 Texture2D depthTex : register(t1);
@@ -2690,12 +2696,31 @@ float4 PS(VSOut i) : SV_Target {
     if (hasDepth != 0 && groundShadow > 0.0) {
         float3 zpre = c;
         float notSubject = smoothstep(bgRecolorStart, bgRecolorStart + max(bgRecolorFeather, 0.003), lin);
+        float shadow;
+        if (groundMode == 1) {
+            float ca = cos(groundCastAngle), sa = sin(groundCastAngle);
+            float2 dir = normalize(float2(ca, -abs(sa) - 0.20));
+            float len = 0.03 + saturate(groundCastLen) * 0.50;
+            float hit = 0.0;
+            [loop] for (int gk = 1; gk <= 10; gk++) {
+                float t = (float)gk * 0.1;
+                float2 step = dir * (len * t) * float2(depthUvScaleX, depthUvScaleY);
+                float2 perp = float2(-dir.y, dir.x) * (0.002 + t * 0.020) * (0.3 + groundRipple);
+                float z1 = LinearizeL(duv + step + perp * float2(depthUvScaleX, depthUvScaleY));
+                float z2 = LinearizeL(duv + step - perp * float2(depthUvScaleX, depthUvScaleY));
+                float o1 = smoothstep(0.020, 0.0, z1 - lin + 0.004);
+                float o2 = smoothstep(0.020, 0.0, z2 - lin + 0.004);
+                hit = max(hit, (o1 + o2) * 0.5 * (1.0 - t * 0.70));
+            }
+            shadow = saturate(hit) * groundShadow * notSubject;
+        } else {
         float2 sp = i.uv - float2(0.5 + groundShadowX, groundShadowY);
         sp.x *= asp;
         float2 hs = float2(max(groundShadowW, 0.02), max(groundShadowH, 0.01));
         float ed = length(sp / hs);
         float soft = 0.15 + groundRipple;
-        float shadow = smoothstep(1.0, max(1.0 - soft, 0.02), ed) * groundShadow * notSubject;
+        shadow = smoothstep(1.0, max(1.0 - soft, 0.02), ed) * groundShadow * notSubject;
+        }
         c *= lerp(float3(1.0, 1.0, 1.0), float3(groundTintR, groundTintG, groundTintB), shadow);
         c = lerp(zpre, c, ZoneMask(zoneGround, lin, scopeSplit, scopeSoft));
     }
@@ -2965,6 +2990,16 @@ float4 PS(VSOut i) : SV_Target {
         c *= lerp(1.0 - saturate(spotAmount), 1.0, pool);
         c = lerp(c, c * float3(1.06, 0.99, 0.88), spotWarm * pool);
         c = lerp(zpre, c, ZoneMask(zoneSpot, lin, scopeSplit, scopeSoft));
+    }
+
+    if (enFinal != 0) {
+        c *= exp2(finalExposure);
+        c.r *= 1.0 + finalTemp;
+        c.b *= 1.0 - finalTemp;
+        c = pow(max(c * (1.0 + finalGain) + finalLift, 0.0), 1.0 / (1.0 + finalGamma));
+        float fgl = Luma(c);
+        c = fgl + (c - fgl) * (1.0 + finalSat);
+        c = max((c - 0.5) * (1.0 + finalContrast) + 0.5, 0.0);
     }
 
     if (filmSat > 0.0) {
@@ -3408,6 +3443,15 @@ float4 PS(VSOut i) : SV_Target {
         float sprk = smoothstep(0.986, 1.0, Hash21(floor(i.uv * 900.0)));
         c += frostCol * sprk * edgeM * saturate(frostAmount) * 0.6;
         c = lerp(zpre, c, ZoneMask(zoneFrost, lin, scopeSplit, scopeSoft));
+    }
+
+    if (debugView == 3) {
+        float2 px = i.uv / max(float2(texelX, texelY), 1e-6);
+        float stripe = frac((px.x + px.y) * 0.10);
+        float hi = max(max(c.r, c.g), c.b);
+        float lo = min(min(c.r, c.g), c.b);
+        if (hi > 0.996 && stripe < 0.5) c = float3(1.0, 0.16, 0.16);
+        if (lo < 0.004 && stripe > 0.5) c = float3(0.16, 0.45, 1.0);
     }
 
     if (letterbox > 0.0) {

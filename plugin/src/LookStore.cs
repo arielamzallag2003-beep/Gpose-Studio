@@ -11,7 +11,7 @@ public static class LookStore
     internal static readonly HashSet<string> Exclude = new()
     {
         "Version", "OutputDirectory", "LivePreview", "DebugShowDepth",
-        "DebugShowGate", "Bypass", "SwapRedBlue", "FlipVertical",
+        "DebugShowGate", "DebugShowClipping", "Bypass", "SwapRedBlue", "FlipVertical",
         "ShowGuides", "GuideThirds", "GuideGolden", "GuideCenter", "GuideHorizon", "GuideHorizonY", "GuideOpacity",
         "ExportAspect", "ShowExportFrame", "ExportScale", "ExportFormat", "ExportJpegQuality",
         "Pinned",
@@ -40,30 +40,74 @@ public static class LookStore
         catch { return new List<string>(); }
     }
 
-    public static void Save(string name, PluginConfig cfg)
+    public enum Part { All, Grade, Background, Light, Subject, Camera }
+
+    private static readonly (string Prefix, Part Part)[] PartMap =
+    {
+        ("Bg", Part.Background), ("Blend", Part.Background), ("Fg", Part.Background),
+        ("Univ", Part.Background), ("Pat", Part.Background), ("EnBackdrop", Part.Background),
+        ("EnBgFill", Part.Background), ("EnBgBlur", Part.Background), ("EnForeground", Part.Background),
+        ("EnFog", Part.Background), ("Fog", Part.Background), ("EnFrost", Part.Background),
+        ("Frost", Part.Background), ("EnSubjectIso", Part.Background),
+        ("Bloom", Part.Light), ("Halation", Part.Light), ("Orton", Part.Light),
+        ("Glamour", Part.Light), ("Godray", Part.Light), ("Anam", Part.Light),
+        ("Spot", Part.Light), ("Backlight", Part.Light), ("Gobo", Part.Light),
+        ("Halo", Part.Light), ("Shadow", Part.Light), ("Ground", Part.Light),
+        ("BackdropLight", Part.Light), ("EnGlow", Part.Light), ("EnShadow", Part.Light),
+        ("EnGobo", Part.Light), ("EnSpot", Part.Light), ("EnHalo", Part.Light),
+        ("EnGround", Part.Light), ("EnBacklight", Part.Light), ("Wash", Part.Light),
+        ("Leak", Part.Light), ("Caustic", Part.Light),
+        ("Rim", Part.Subject), ("Skin", Part.Subject), ("Beauty", Part.Subject),
+        ("Wet", Part.Subject), ("SubjectPop", Part.Subject), ("EnRim", Part.Subject),
+        ("EnSkin", Part.Subject), ("EnBeauty", Part.Subject), ("EnWet", Part.Subject),
+        ("Edge", Part.Subject), ("EnEdge", Part.Subject),
+        ("Dof", Part.Camera), ("Tilt", Part.Camera), ("Film", Part.Camera),
+        ("Lens", Part.Camera), ("Vignette", Part.Camera), ("Grain", Part.Camera),
+        ("Chroma", Part.Camera), ("Warp", Part.Camera), ("Prism", Part.Camera),
+        ("EnLens", Part.Camera), ("EnDof", Part.Camera), ("EnTiltShift", Part.Camera),
+        ("EnWarp", Part.Camera), ("Letterbox", Part.Camera), ("Soft", Part.Camera),
+    };
+
+    private static Part PartOf(string name)
+    {
+        foreach (var (prefix, part) in PartMap)
+            if (name.StartsWith(prefix, StringComparison.Ordinal)) return part;
+        return Part.Grade;
+    }
+
+    public static string Capture(PluginConfig cfg)
     {
         var dict = new Dictionary<string, object?>();
         foreach (var p in typeof(PluginConfig).GetProperties())
             if (p.CanRead && p.CanWrite && !Exclude.Contains(p.Name))
                 dict[p.Name] = p.GetValue(cfg);
-
-        var json = JsonSerializer.Serialize(dict, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(Path.Combine(FolderPath, Sanitize(name) + ".json"), json);
+        return JsonSerializer.Serialize(dict, new JsonSerializerOptions { WriteIndented = true });
     }
 
-    public static bool Load(string name, PluginConfig cfg)
+    public static void Save(string name, PluginConfig cfg) =>
+        File.WriteAllText(Path.Combine(FolderPath, Sanitize(name) + ".json"), Capture(cfg));
+
+    public static bool Load(string name, PluginConfig cfg) => Load(name, cfg, Part.All);
+
+    public static bool Load(string name, PluginConfig cfg, Part part)
     {
         var path = Path.Combine(FolderPath, Sanitize(name) + ".json");
         if (!File.Exists(path)) return false;
+        try { return Apply(File.ReadAllText(path), cfg, part); }
+        catch { return false; }
+    }
 
+    public static bool Apply(string json, PluginConfig cfg, Part part)
+    {
         Dictionary<string, JsonElement>? dict;
-        try { dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(File.ReadAllText(path)); }
+        try { dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json); }
         catch { return false; }
         if (dict == null) return false;
 
         foreach (var p in typeof(PluginConfig).GetProperties())
         {
             if (!p.CanWrite || Exclude.Contains(p.Name)) continue;
+            if (part != Part.All && PartOf(p.Name) != part) continue;
             if (!dict.TryGetValue(p.Name, out var el)) continue;
             try
             {
@@ -103,7 +147,7 @@ public static class LookStore
             catch {  }
         }
 
-        if (!dict.ContainsKey("BgBPatColOverride")) cfg.CarryPatternIdentity();
+        if (part == Part.All && !dict.ContainsKey("BgBPatColOverride")) cfg.CarryPatternIdentity();
         return true;
     }
 

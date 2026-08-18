@@ -21,6 +21,11 @@ public sealed class MainWindow : Window, IDisposable
     private string _lookFilter = "";
     private string _lookSel = "";
     private string _confirmDelete = "";
+    private readonly List<string> _undo = new();
+    private readonly List<string> _redo = new();
+    private string _baseline = "";
+    private const int UndoDepth = 60;
+    private int _applyPart;
 
     private static readonly string[] UiScopeModes = { "Both", "Foreground only", "Background only" };
     private static readonly string[] UiBases = { "Linear", "Radial", "Diamond", "Conic", "Mirror", "Spiral" };
@@ -29,6 +34,9 @@ public sealed class MainWindow : Window, IDisposable
     private static readonly string[] UiFgPlace = { "Edges (vignette-in)", "Corners", "Top", "Bottom", "Left", "Right", "Radial (centre)", "Directional", "Full frame" };
     private static readonly string[] UiFgBlend = { "Over", "Add (glow)", "Screen", "Multiply (void)" };
     private static readonly string[] UiFgDepth = { "Everything", "Near / subject", "Far / background" };
+    private static readonly string[] UiApplyPart =
+        { "Everything", "Grade only", "Background only", "Light only", "Subject only", "Camera only" };
+    private static readonly string[] UiGroundMode = { "Placed blob", "Cast from silhouette" };
     private static readonly string[] UiGobo = { "Venetian blinds", "Window frame", "Lace / web", "Foliage dapple" };
     private static readonly string[] UiParticle = { "Petals / dust", "Hearts", "Bubbles" };
     private static readonly string[] UiBokeh = { "Circle", "Heart", "Hex" };
@@ -126,6 +134,7 @@ public sealed class MainWindow : Window, IDisposable
         if (_dirty) _savePending = true;
         if (_savePending && !ImGui.IsAnyItemActive())
         {
+            PushUndo(cfg);
             cfg.Save();
             _savePending = false;
         }
@@ -162,12 +171,46 @@ public sealed class MainWindow : Window, IDisposable
             cfg.LivePreview = live; _live.Enabled = live; _dirty = true;
         }
         ImGui.SameLine();
-        float btnX = ImGui.GetContentRegionMax().X - 96f;
+        float btnX = ImGui.GetContentRegionMax().X - 268f;
         if (btnX > ImGui.GetCursorPosX()) ImGui.SetCursorPosX(btnX);
+        bool canUndo = _undo.Count > 0, canRedo = _redo.Count > 0;
+        using (ImRaii.Disabled(!canUndo))
+            if (ImGui.Button(canUndo ? $"Undo {_undo.Count}" : "Undo", new Vector2(76f, 0)) && canUndo) Undo(cfg);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(canUndo
+                ? $"Step back one edit. {_undo.Count} available.\nA whole slider drag counts as one step."
+                : "Nothing to undo yet.");
+        ImGui.SameLine();
+        using (ImRaii.Disabled(!canRedo))
+            if (ImGui.Button(canRedo ? $"Redo {_redo.Count}" : "Redo", new Vector2(76f, 0)) && canRedo) Redo(cfg);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(canRedo ? $"Step forward again. {_redo.Count} available." : "Nothing to redo.");
+        ImGui.SameLine();
         if (ImGui.Button("Reset look", new Vector2(96f, 0))) { cfg.ResetLook(); _dirty = true; }
 
         var bypass = cfg.Bypass;
         if (ImGui.Checkbox("Bypass — show the original (A/B compare)", ref bypass)) { cfg.Bypass = bypass; _dirty = true; }
+
+        ImGui.SameLine();
+
+        var clip = cfg.DebugShowClipping;
+
+        if (ImGui.Checkbox("Clipping", ref clip))
+        {
+            cfg.DebugShowClipping = clip;
+            if (clip) { cfg.DebugShowGate = false; cfg.DebugShowDepth = false; }
+            _dirty = true;
+        }
+
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+
+            "Stripes where detail is being lost.\n" +
+
+            "  red   = highlights blown to white\n" +
+
+            "  blue  = shadows crushed to black\n\n" +
+
+            "A blown highlight and a merely bright one look the same on screen, so grade with\nthis on for a moment before you commit.");
     }
 
     private void DrawPresets(PluginConfig cfg)
@@ -229,6 +272,25 @@ public sealed class MainWindow : Window, IDisposable
         }
 
         DrawGradeGroups(cfg);
+
+        using (var fg = GroupEn("Final grade (after everything)", cfg.EnFinalGrade && FinalGradeActive(cfg),
+                                cfg.EnFinalGrade, v => cfg.EnFinalGrade = v))
+        if (fg.Show)
+        {
+            ImGui.TextDisabled(
+                "The controls above grade the CAPTURED frame, before the backdrop, shadows and\n" +
+                "glow are composited over it \u2014 so pulling Exposure up there moves your character\n" +
+                "and leaves the backdrop where it was. These grade the finished picture instead.\n" +
+                "Reach for them last, to push both halves into one image.");
+            cfg.FinalExposure = Knob("Final exposure", cfg.FinalExposure, -2f, 2f, Defaults.FinalExposure, "Stops, over the whole composite.");
+            cfg.FinalContrast = Knob("Final contrast", cfg.FinalContrast, -1f, 1f, Defaults.FinalContrast, "Around mid grey.");
+            cfg.FinalSat = Knob("Final saturation", cfg.FinalSat, -1f, 1f, Defaults.FinalSat, "-1 = grayscale. Useful for pulling a loud backdrop back toward the subject.");
+            cfg.FinalTemp = Knob("Final temperature", cfg.FinalTemp, -0.3f, 0.3f, Defaults.FinalTemp, "Cool <-> warm. The one control that can warm subject and backdrop together.");
+            cfg.FinalLift = Knob("Final lift", cfg.FinalLift, -0.1f, 0.2f, Defaults.FinalLift, "Raises the blacks of the whole image \u2014 the usual way to seat a composite in one atmosphere.");
+            cfg.FinalGamma = Knob("Final gamma", cfg.FinalGamma, -0.5f, 0.5f, Defaults.FinalGamma, "Midtones.");
+            cfg.FinalGain = Knob("Final gain", cfg.FinalGain, -0.5f, 0.5f, Defaults.FinalGain, "Highlights.");
+            ImGui.TextDisabled("Runs before film response and lens, so the film curve still answers\nthe graded image rather than grading its own output.");
+        }
     }
 
     private void DrawGradeGroups(PluginConfig cfg)
@@ -923,10 +985,20 @@ public sealed class MainWindow : Window, IDisposable
         {
             ImGui.TextDisabled("A soft shadow decal you place under the subject to ground them.\nDrag Position/Size so it sits at the feet. Works on any backdrop.");
             cfg.GroundShadow = Knob("Opacity", cfg.GroundShadow, 0f, 1f, Defaults.GroundShadow, "How dark the shadow is (0 = off).");
-            cfg.GroundShadowX = Knob("Position X", cfg.GroundShadowX, -1.5f, 1.5f, Defaults.GroundShadowX, "Horizontal position (0 = centre). Reaches past both edges, for a subject standing off to the side.");
-            cfg.GroundShadowY = Knob("Position Y", cfg.GroundShadowY, -0.5f, 2f, Defaults.GroundShadowY, "Vertical position, set to the subject's feet. Runs past the top and bottom of frame, for a low camera or feet below the crop.");
-            cfg.GroundShadowW = Knob("Width", cfg.GroundShadowW, 0.02f, 2f, Defaults.GroundShadowW, "Half-width of the shadow ellipse. Wide enough to take in the whole floor under a raking light.");
-            cfg.GroundShadowH = Knob("Height", cfg.GroundShadowH, 0.005f, 1.2f, Defaults.GroundShadowH, "Half-height. Low for a flat ground-hugging shadow; raise it for a long one thrown toward the camera.");
+            Combo("Mode", "##groundmode", UiGroundMode, cfg.GroundMode, v => cfg.GroundMode = v);
+            if (cfg.GroundMode == 1)
+            {
+                cfg.GroundCastAngle = Knob("Light bearing", cfg.GroundCastAngle, 0f, 3.14f, Defaults.GroundCastAngle, "Which way the light comes from, so which way the shadow runs.");
+                cfg.GroundCastLen = Knob("Length", cfg.GroundCastLen, 0f, 1f, Defaults.GroundCastLen, "How far the shadow reaches. A low light throws a long one.");
+                ImGui.TextDisabled("  Cast from the actual silhouette, so it follows the pose.\n  Its edge widens as it runs; Softness below sets how much.");
+            }
+            else
+            {
+                cfg.GroundShadowX = Knob("Position X", cfg.GroundShadowX, -1.5f, 1.5f, Defaults.GroundShadowX, "Horizontal position (0 = centre). Reaches past both edges, for a subject standing off to the side.");
+                cfg.GroundShadowY = Knob("Position Y", cfg.GroundShadowY, -0.5f, 2f, Defaults.GroundShadowY, "Vertical position, set to the subject's feet. Runs past the top and bottom of frame, for a low camera or feet below the crop.");
+                cfg.GroundShadowW = Knob("Width", cfg.GroundShadowW, 0.02f, 2f, Defaults.GroundShadowW, "Half-width of the shadow ellipse. Wide enough to take in the whole floor under a raking light.");
+                cfg.GroundShadowH = Knob("Height", cfg.GroundShadowH, 0.005f, 1.2f, Defaults.GroundShadowH, "Half-height. Low for a flat ground-hugging shadow; raise it for a long one thrown toward the camera.");
+            }
             cfg.GroundRipple = Knob("Softness", cfg.GroundRipple, 0f, 1f, Defaults.GroundRipple, "How soft the shadow's edge is.");
             var gt = ColorPick("Shadow tint", new Vector3(cfg.GroundTintR, cfg.GroundTintG, cfg.GroundTintB), new Vector3(Defaults.GroundTintR, Defaults.GroundTintG, Defaults.GroundTintB));
             cfg.GroundTintR = gt.X; cfg.GroundTintG = gt.Y; cfg.GroundTintB = gt.Z;
@@ -2284,6 +2356,22 @@ public sealed class MainWindow : Window, IDisposable
         }
         else ImGui.TextDisabled("Click a look below to load it.");
 
+        ImGui.TextDisabled("Clicking a look applies");
+        ImGui.SameLine();
+        ImGui.PushItemWidth(170f);
+        if (ImGui.BeginCombo("##applypart", UiApplyPart[Math.Clamp(_applyPart, 0, UiApplyPart.Length - 1)]))
+        {
+            for (int k = 0; k < UiApplyPart.Length; k++)
+                if (ImGui.Selectable(UiApplyPart[k], _applyPart == k)) _applyPart = k;
+            ImGui.EndCombo();
+        }
+        ImGui.PopItemWidth();
+        if (_applyPart != 0)
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton("All##applyreset")) _applyPart = 0;
+        }
+
         ImGui.Separator();
 
         bool Match(string n) =>
@@ -2296,7 +2384,15 @@ public sealed class MainWindow : Window, IDisposable
             if (ImGui.Selectable(n, _lookSel == n))
             {
                 _confirmDelete = "";
-                if (LookStore.Load(n, cfg)) { cfg.Save(); _lookSel = n; _status = $"Loaded \u2018{n}\u2019."; }
+                PushUndo(cfg);
+                var part = (LookStore.Part)_applyPart;
+                if (LookStore.Load(n, cfg, part))
+                {
+                    cfg.Save(); _lookSel = n;
+                    _status = part == LookStore.Part.All
+                        ? $"Loaded \u2018{n}\u2019."
+                        : $"Loaded the {UiApplyPart[_applyPart].ToLowerInvariant()} from \u2018{n}\u2019.";
+                }
                 else _status = $"Could not load \u2018{n}\u2019.";
             }
         }
@@ -2331,7 +2427,7 @@ public sealed class MainWindow : Window, IDisposable
         if (ImGui.Checkbox("Show what this covers##" + id, ref g))
         {
             Plugin.Config.DebugShowGate = g;
-            if (g) Plugin.Config.DebugShowDepth = false;
+            if (g) { Plugin.Config.DebugShowDepth = false; Plugin.Config.DebugShowClipping = false; }
             _dirty = true;
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(
@@ -2345,7 +2441,7 @@ public sealed class MainWindow : Window, IDisposable
         if (ImGui.Checkbox("Raw depth##" + id, ref d))
         {
             Plugin.Config.DebugShowDepth = d;
-            if (d) Plugin.Config.DebugShowGate = false;
+            if (d) { Plugin.Config.DebugShowGate = false; Plugin.Config.DebugShowClipping = false; }
             _dirty = true;
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(
@@ -2364,6 +2460,45 @@ public sealed class MainWindow : Window, IDisposable
                     "Nothing to tint: pick a Background style, or raise the fill's Opacity.");
         }
     }
+
+    private void PushUndo(PluginConfig cfg)
+    {
+        var now = LookStore.Capture(cfg);
+        if (_baseline.Length == 0) { _baseline = now; return; }
+        if (string.Equals(now, _baseline, StringComparison.Ordinal)) return;
+        _undo.Add(_baseline);
+        if (_undo.Count > UndoDepth) _undo.RemoveAt(0);
+        _redo.Clear();
+        _baseline = now;
+    }
+
+    private void Undo(PluginConfig cfg)
+    {
+        if (_undo.Count == 0) { _status = "Nothing to undo."; return; }
+        _redo.Add(LookStore.Capture(cfg));
+        var j = _undo[_undo.Count - 1];
+        _undo.RemoveAt(_undo.Count - 1);
+        LookStore.Apply(j, cfg, LookStore.Part.All);
+        _baseline = j;
+        _savePending = true;
+        _status = $"Undo ({_undo.Count} left).";
+    }
+
+    private void Redo(PluginConfig cfg)
+    {
+        if (_redo.Count == 0) { _status = "Nothing to redo."; return; }
+        _undo.Add(LookStore.Capture(cfg));
+        var j = _redo[_redo.Count - 1];
+        _redo.RemoveAt(_redo.Count - 1);
+        LookStore.Apply(j, cfg, LookStore.Part.All);
+        _baseline = j;
+        _savePending = true;
+        _status = "Redo.";
+    }
+
+    private static bool FinalGradeActive(PluginConfig c) =>
+        c.FinalExposure != 0f || c.FinalContrast != 0f || c.FinalSat != 0f || c.FinalTemp != 0f
+        || c.FinalLift != 0f || c.FinalGamma != 0f || c.FinalGain != 0f;
 
     private void OpenOutputFolder() => OpenFolder(Plugin.Config.OutputDirectory);
 

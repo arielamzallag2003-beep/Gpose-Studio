@@ -561,6 +561,17 @@ public sealed class PluginConfig : IPluginConfiguration
         BgBPatMat = s.BgBPatMat; BgBPatMatR = s.BgBPatMatR; BgBPatMatG = s.BgBPatMatG;
         BgBPatMatB = s.BgBPatMatB; BgBPatMatTint = s.BgBPatMatTint;
     }
+    public bool EnFinalGrade { get; set; } = false;
+    public float FinalExposure { get; set; } = 0f;
+    public float FinalContrast { get; set; } = 0f;
+    public float FinalSat { get; set; } = 0f;
+    public float FinalTemp { get; set; } = 0f;
+    public float FinalLift { get; set; } = 0f;
+    public float FinalGamma { get; set; } = 0f;
+    public float FinalGain { get; set; } = 0f;
+    public int GroundMode { get; set; } = 0;
+    public float GroundCastAngle { get; set; } = 1.2f;
+    public float GroundCastLen { get; set; } = 0.35f;
     public float GroundLevel { get; set; } = 0.72f;
     public float GroundShadow { get; set; } = 0f;
     public float GroundRipple { get; set; } = 0.45f;
@@ -1077,6 +1088,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public bool DebugShowDepth { get; set; } = false;
     public bool DebugShowGate { get; set; } = false;
+    public bool DebugShowClipping { get; set; } = false;
 
     public bool Bypass { get; set; } = false;
 
