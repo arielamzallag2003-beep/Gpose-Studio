@@ -2265,7 +2265,7 @@ float4 PS(VSOut i) : SV_Target {
                  ? smoothstep(bgRecolorStart, bgRecolorStart + max(bgRecolorFeather, 0.003), lin) * bgRecolor : 0.0;
         float mf = (bgFill > 0.0)
                  ? smoothstep(bgFillStart, bgFillStart + max(bgFillFeather, 0.003), lin) * bgFill : 0.0;
-        float3 sc = colorTex.SampleLevel(samp, i.uv, 0).rgb;
+        float3 sc = colorTex.SampleLevel(samp, cuv, 0).rgb;
         float g = dot(sc, float3(0.299, 0.587, 0.114)) * 0.40;
         float3 o = float3(g, g, g);
         o = lerp(o, float3(1.00, 0.15, 0.85), saturate(mb) * 0.85);

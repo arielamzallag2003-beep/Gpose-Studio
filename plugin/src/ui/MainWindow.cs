@@ -2328,15 +2328,40 @@ public sealed class MainWindow : Window, IDisposable
     {
         if (!ReferenceEquals(cfg, Plugin.Config)) return;
         var g = Plugin.Config.DebugShowGate;
-        if (ImGui.Checkbox("Show what this covers##" + id, ref g)) { Plugin.Config.DebugShowGate = g; _dirty = true; }
+        if (ImGui.Checkbox("Show what this covers##" + id, ref g))
+        {
+            Plugin.Config.DebugShowGate = g;
+            if (g) Plugin.Config.DebugShowDepth = false;
+            _dirty = true;
+        }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(
             "Paints the frame by what the depth gate selects:\n" +
             "  magenta = the backdrop reaches here\n" +
             "  cyan    = the solid fill reaches here\n\n" +
             "If nothing is tinted, Start (depth) is set beyond everything in the scene —\n" +
             "lower it until the wall behind your subject lights up.");
+        ImGui.SameLine();
+        var d = Plugin.Config.DebugShowDepth;
+        if (ImGui.Checkbox("Raw depth##" + id, ref d))
+        {
+            Plugin.Config.DebugShowDepth = d;
+            if (d) Plugin.Config.DebugShowGate = false;
+            _dirty = true;
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "The depth buffer itself, near black to far white.\n" +
+            "Read a value off it to know what to set Start (depth) to.\n" +
+            "Red means the game gave us no depth this frame.");
+        if (Plugin.Config.DebugShowGate || Plugin.Config.DebugShowDepth)
+            ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), "Depth preview is on — untick to see the shot.");
         if (Plugin.Config.DebugShowGate)
-            ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), "Gate preview is on — untick to see the shot.");
+        {
+            var pc = Plugin.Config;
+            bool anyBackdrop = pc.EnBackdrop && pc.BgRecolor > 0f && pc.BgStyle > 0;
+            bool anyFill = pc.EnBgFill && pc.BgFill > 0f;
+            if (!anyBackdrop && !anyFill)
+                ImGui.TextDisabled("  Nothing to preview yet: no background style and no fill are on.");
+        }
     }
 
     private void OpenOutputFolder() => OpenFolder(Plugin.Config.OutputDirectory);
