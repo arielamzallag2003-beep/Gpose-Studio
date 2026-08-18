@@ -42,6 +42,10 @@ tinted, lower the value until the wall behind your subject lights up.
 
 ## Building
 
+Only if you want to modify it. Installing from the repository above needs none of
+this — that download is already compiled, with the shader bytecode embedded, so
+there is nothing to build and nothing to compile on first use.
+
 Requires the .NET 10 SDK, a Dalamud install, Python 3, and the Windows SDK's
 `fxc.exe`.
 
