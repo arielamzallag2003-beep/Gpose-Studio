@@ -3,7 +3,7 @@
     "Author": "Mysterious Popoto",
     "Name": "GPoseStudio",
     "InternalName": "GPoseStudioPlugin",
-    "AssemblyVersion": "0.6.4.0",
+    "AssemblyVersion": "0.6.4.1",
     "Description": "Captures the GPose frame and applies GPoseStudio color/lighting looks. Cosmetic, client-side only. Works alongside Brio/Ktisis.",
     "ApplicableVersion": "any",
     "Tags": [
@@ -22,6 +22,7 @@
     "LoadPriority": 0,
     "Punchline": "Live cinematic looks for GPose.",
     "AcceptsFeedback": false,
+    "IconUrl": "https://raw.githubusercontent.com/arielamzallag2003-beep/Gpose-Studio/repo/icon.png",
     "DownloadLinkInstall": "https://raw.githubusercontent.com/arielamzallag2003-beep/Gpose-Studio/repo/GPoseStudioPlugin.zip",
     "DownloadLinkUpdate": "https://raw.githubusercontent.com/arielamzallag2003-beep/Gpose-Studio/repo/GPoseStudioPlugin.zip",
     "DownloadLinkTesting": "https://raw.githubusercontent.com/arielamzallag2003-beep/Gpose-Studio/repo/GPoseStudioPlugin.zip",
