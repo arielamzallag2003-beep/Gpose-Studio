@@ -1,0 +1,11 @@
+{
+  "Name": "GPoseStudio",
+  "Author": "Mysterious Popoto",
+  "Punchline": "Live cinematic looks for GPose.",
+  "Description": "Captures the GPose frame and applies GPoseStudio color/lighting looks. Cosmetic, client-side only. Works alongside Brio/Ktisis.",
+  "InternalName": "GPoseStudioPlugin",
+  "ApplicableVersion": "any",
+  "Tags": ["gpose", "screenshot", "cosmetic", "post-processing"],
+  "CategoryTags": ["other"],
+  "AcceptsFeedback": false
+}

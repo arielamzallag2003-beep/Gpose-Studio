@@ -1,0 +1,8 @@
+bin/
+obj/
+.vs/
+tools/.shadercheck/
+tools/.baseline*/
+__pycache__/
+*.pyc
+*.user

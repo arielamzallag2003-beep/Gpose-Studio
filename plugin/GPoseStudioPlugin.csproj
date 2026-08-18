@@ -1,0 +1,45 @@
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Platforms>x64</Platforms>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>GPoseStudioPlugin</AssemblyName>
+    <RootNamespace>GPoseStudio</RootNamespace>
+    <Version>0.6.0.0</Version>
+
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="src\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Vortice.Direct3D11" Version="3.6.2" />
+    <PackageReference Include="Vortice.D3DCompiler" Version="3.6.2" />
+
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <ShaderOutDir>$(MSBuildProjectDirectory)\obj\shaders</ShaderOutDir>
+  </PropertyGroup>
+  <Target Name="CompileShaders"
+          Inputs="src\GpuRenderer.cs" Outputs="$(ShaderOutDir)\Hlsl_PS.cso">
+    <Message Importance="high" Text="Checking HLSL (recompiles only if the shader text changed; the main PS takes ~15 min when it does)..." />
+
+    <Exec Command="python &quot;$(MSBuildProjectDirectory)\..\tools\check_shaders.py&quot; --out &quot;$(ShaderOutDir)&quot;"
+          ContinueOnError="WarnAndContinue" />
+  </Target>
+
+  <Target Name="EmbedShaders" DependsOnTargets="CompileShaders" BeforeTargets="BeforeBuild">
+
+    <ItemGroup>
+      <_ShaderCso Include="$(ShaderOutDir)\*.cso" />
+      <EmbeddedResource Include="@(_ShaderCso)"
+                        LogicalName="GPoseStudio.Shaders.%(_ShaderCso.Filename)%(_ShaderCso.Extension)" />
+    </ItemGroup>
+  </Target>
+</Project>
