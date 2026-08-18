@@ -17,6 +17,10 @@ public sealed class MainWindow : Window, IDisposable
     private readonly LiveOverlay _live;
     private readonly FileDialogManager _dialogs = new();
     private static readonly PluginConfig Defaults = new();
+    private static readonly Vector4 AccentCol = new(0.62f, 0.74f, 0.95f, 1f);
+    private string _lookFilter = "";
+    private string _lookSel = "";
+    private string _confirmDelete = "";
 
     private static readonly string[] UiScopeModes = { "Both", "Foreground only", "Background only" };
     private static readonly string[] UiBases = { "Linear", "Radial", "Diamond", "Conic", "Mirror", "Spiral" };
@@ -1596,7 +1600,7 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.PushItemWidth(-1f);
             if (ImGui.BeginCombo("##preset", "Load a theme…"))
             {
-                foreach (var (name, desc, _) in LookStore.Builtins)
+                foreach (var (name, _cat, _) in LookStore.Builtins)
                 {
                     if (ImGui.Selectable(name))
                     {
@@ -1607,7 +1611,6 @@ public sealed class MainWindow : Window, IDisposable
                         cfg.CopyBFrom(keepB);
                         st = cfg.BgStyle; _dirty = true;
                     }
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip(desc);
                 }
                 ImGui.EndCombo();
             }
@@ -2218,53 +2221,89 @@ public sealed class MainWindow : Window, IDisposable
 
     private void LooksBody(PluginConfig cfg)
     {
+        var cat = new Dictionary<string, string>();
+        foreach (var (bn, bc, _) in LookStore.Builtins) cat[bn] = bc;
 
-        ImGui.TextDisabled("Load a look to start from, then adjust it in the tabs to the right.");
-        ImGui.Spacing();
+        ImGui.PushItemWidth(-84f);
+        var f = _lookFilter;
+        if (ImGui.InputTextWithHint("##lookfilter", "Search looks\u2026", ref f, 64)) _lookFilter = f;
+        ImGui.PopItemWidth();
+        ImGui.SameLine();
+        using (ImRaii.Disabled(_lookFilter.Length == 0))
+            if (ImGui.Button("Clear", new Vector2(76f, 0))) { _lookFilter = ""; _confirmDelete = ""; }
 
-        var builtin = new Dictionary<string, string>();
-        foreach (var (bn, bd, _) in LookStore.Builtins) builtin[bn] = bd;
+        bool Match(string n) =>
+            _lookFilter.Length == 0
+            || n.Contains(_lookFilter, StringComparison.OrdinalIgnoreCase)
+            || (cat.TryGetValue(n, out var c) && c.Contains(_lookFilter, StringComparison.OrdinalIgnoreCase));
 
-        void Row(string name)
+        void Row(string n)
         {
-            if (ImGui.Button("Load##" + name))
-            {
-                if (LookStore.Load(name, cfg)) { cfg.Save(); _status = $"Loaded '{name}'."; }
-            }
-            ImGui.SameLine();
-            if (ImGui.Button("Delete##" + name))
-            {
-                LookStore.Delete(name);
-                _status = $"Deleted '{name}'.";
-                _lookList = LookStore.List();
-            }
-            ImGui.SameLine();
-            ImGui.TextUnformatted(name);
-            if (builtin.TryGetValue(name, out var desc))
-            {
-                ImGui.Indent(58f);
-                ImGui.PushTextWrapPos(0f);
-                ImGui.TextDisabled(desc);
-                ImGui.PopTextWrapPos();
-                ImGui.Unindent(58f);
-            }
+            if (ImGui.Selectable(n, _lookSel == n)) { _lookSel = n; _confirmDelete = ""; }
         }
 
-        var mine = _lookList.Where(n => !builtin.ContainsKey(n)).ToList();
-        var stock = _lookList.Where(n => builtin.ContainsKey(n)).ToList();
+        var mine = _lookList.Where(n => !cat.ContainsKey(n) && Match(n)).ToList();
+        var stock = _lookList.Where(n => cat.ContainsKey(n) && Match(n)).ToList();
 
+        ImGui.Spacing();
         if (mine.Count > 0)
         {
-            ImGui.Separator(); ImGui.TextDisabled("Your looks");
-            foreach (var name in mine) Row(name);
+            ImGui.TextColored(AccentCol, "Yours");
+            ImGui.Indent(10f);
+            foreach (var n in mine) Row(n);
+            ImGui.Unindent(10f);
             ImGui.Spacing();
         }
-        if (stock.Count > 0)
+        foreach (var g in stock.GroupBy(n => cat[n]).OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
         {
-            ImGui.Separator(); ImGui.TextDisabled("Built in");
-            foreach (var name in stock) Row(name);
+            ImGui.TextColored(AccentCol, g.Key);
+            ImGui.Indent(10f);
+            foreach (var n in g) Row(n);
+            ImGui.Unindent(10f);
+            ImGui.Spacing();
         }
-        if (_lookList.Count == 0) ImGui.TextDisabled("No looks yet.");
+        if (mine.Count == 0 && stock.Count == 0)
+            ImGui.TextDisabled(_lookList.Count == 0 ? "No looks yet." : "Nothing matches that search.");
+
+        ImGui.Separator();
+        bool has = _lookSel.Length > 0 && _lookList.Contains(_lookSel);
+        bool isBuiltin = has && cat.ContainsKey(_lookSel);
+        if (has)
+        {
+            ImGui.TextUnformatted(_lookSel);
+            if (isBuiltin) { ImGui.SameLine(); ImGui.TextDisabled("(built in)"); }
+        }
+        else ImGui.TextDisabled("Select a look above.");
+
+        using (ImRaii.Disabled(!has))
+        {
+            if (ImGui.Button("Load", new Vector2(96f, 0)) && has)
+            {
+                if (LookStore.Load(_lookSel, cfg)) { cfg.Save(); _status = $"Loaded \u2018{_lookSel}\u2019."; }
+            }
+            ImGui.SameLine();
+            if (isBuiltin)
+            {
+                if (ImGui.Button("Reset", new Vector2(96f, 0)) && has)
+                {
+                    LookStore.RegenerateBuiltin(_lookSel);
+                    _lookList = LookStore.List();
+                    _status = $"Reset \u2018{_lookSel}\u2019 to its original.";
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Put this built-in look back the way it shipped.");
+            }
+            else if (_confirmDelete == _lookSel)
+            {
+                if (ImGui.Button("Really delete?", new Vector2(140f, 0)))
+                {
+                    LookStore.Delete(_lookSel);
+                    _status = $"Deleted \u2018{_lookSel}\u2019.";
+                    _lookSel = ""; _confirmDelete = "";
+                    _lookList = LookStore.List();
+                }
+            }
+            else if (ImGui.Button("Delete", new Vector2(96f, 0)) && has) _confirmDelete = _lookSel;
+        }
 
         ImGui.Separator();
         ImGui.TextDisabled("Save the current settings as a look of your own.");
@@ -2272,13 +2311,17 @@ public sealed class MainWindow : Window, IDisposable
         ImGui.InputText("##lookname", ref _lookName, 64);
         ImGui.PopItemWidth();
         ImGui.SameLine();
-        using (ImRaii.Disabled(string.IsNullOrWhiteSpace(_lookName)))
-            if (ImGui.Button("Save", new Vector2(100f, 0)))
+        string trimmed = _lookName.Trim();
+        bool exists = trimmed.Length > 0 && _lookList.Contains(trimmed);
+        using (ImRaii.Disabled(trimmed.Length == 0))
+            if (ImGui.Button(exists ? "Overwrite" : "Save", new Vector2(100f, 0)))
             {
                 LookStore.Save(_lookName, cfg);
-                _status = $"Saved look '{_lookName.Trim()}'.";
+                _status = $"Saved \u2018{trimmed}\u2019.";
                 _lookList = LookStore.List();
+                _lookSel = trimmed;
             }
+        if (exists) ImGui.TextDisabled($"\u2018{trimmed}\u2019 already exists — saving replaces it.");
 
         ImGui.Spacing();
         if (ImGui.Button("Open looks folder")) OpenFolder(LookStore.FolderPath);
