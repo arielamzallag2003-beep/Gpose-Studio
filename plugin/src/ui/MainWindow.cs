@@ -2360,7 +2360,8 @@ public sealed class MainWindow : Window, IDisposable
             bool anyBackdrop = pc.EnBackdrop && pc.BgRecolor > 0f && pc.BgStyle > 0;
             bool anyFill = pc.EnBgFill && pc.BgFill > 0f;
             if (!anyBackdrop && !anyFill)
-                ImGui.TextDisabled("  Nothing to preview yet: no background style and no fill are on.");
+                ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f),
+                    "Nothing to tint: pick a Background style, or raise the fill's Opacity.");
         }
     }
 
