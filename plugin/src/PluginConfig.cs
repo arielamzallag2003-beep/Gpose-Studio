@@ -7,6 +7,8 @@ namespace GPoseStudio;
 
 public sealed class PluginConfig : IPluginConfiguration
 {
+    public const int CurrentVersion = 2;
+
     public int Version { get; set; } = 1;
 
     public string OutputDirectory { get; set; } =
@@ -1083,6 +1085,7 @@ public sealed class PluginConfig : IPluginConfiguration
     public int ExportAspect { get; set; } = 0;
     public int ExportScale { get; set; } = 1;
     public int ExportFormat { get; set; } = 0;
+    public bool EmbedLookInPng { get; set; } = true;
     public int ExportJpegQuality { get; set; } = 92;
     public bool ShowExportFrame { get; set; } = true;
 
@@ -2164,26 +2167,58 @@ public sealed class PluginConfig : IPluginConfiguration
         }
     }
 
+    internal Frame.Opts FrameOpts() => new(
+        FrameMatInset, FrameSmooth, FrameCorner, FrameMat, FrameOuterCorner,
+        FrameKeyline, FrameShadow, FrameBottom,
+        FrameMatR, FrameMatG, FrameMatB,
+        FrameKeyR, FrameKeyG, FrameKeyB, FrameAlpha);
+
     public void Save() => Services.PluginInterface.SavePluginConfig(this);
 
     public static PluginConfig Load()
     {
         var cfg = Services.PluginInterface.GetPluginConfig() as PluginConfig ?? new PluginConfig();
-        cfg.MigrateElem();
-        cfg.MigrateFg();
+        cfg.Migrate();
         return cfg;
+    }
+
+    private void Migrate()
+    {
+        int found = Version;
+
+        if (found > CurrentVersion)
+        {
+            Services.Log.Warning(
+                $"GPoseStudio config is version {found}; this build understands {CurrentVersion}. " +
+                "Loading it as far as is safe and leaving the stamp alone.");
+        }
+
+        try
+        {
+            MigrateElem();
+            MigrateFg();
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error($"GPoseStudio config migration failed: {ex}");
+        }
+
+        if (found < CurrentVersion)
+        {
+            Version = CurrentVersion;
+            try { Save(); }
+            catch (Exception ex) { Services.Log.Warning($"could not write the migrated config: {ex.Message}"); }
+            Services.Log.Info($"GPoseStudio config migrated from version {found} to {CurrentVersion}.");
+        }
     }
 
     private void MigrateFg()
     {
         int want = 2 * FgFieldCount + 2;
         if (FgField != null && FgField.Length == want) return;
-        var dst = new float[want];
-        if (FgField != null && FgField.Length == 180)
-            for (int f = 0; f < 2; f++)
-                for (int k = 0; k < 89; k++)
-                    dst[f * FgFieldCount + k] = FgField[f * 89 + k];
-        FgField = dst;
+        FgField = PackedArray.Widen(FgField?.Length == 180 ? FgField : null,
+                                    length: want, blocks: 2,
+                                    oldStride: 89, newStride: FgFieldCount, copyPerBlock: 89);
         CarryPatternIdentity();
     }
 
@@ -2220,12 +2255,9 @@ public sealed class PluginConfig : IPluginConfiguration
     private void MigrateElem()
     {
         if (Elem != null && Elem.Length == 8 * ElemStride) return;
-        var dst = new float[8 * ElemStride];
-        if (Elem != null && Elem.Length == 128)
-            for (int L = 0; L < 8; L++)
-                for (int k = 0; k < 16; k++)
-                    dst[L * ElemStride + k] = Elem[L * 16 + k];
-        Elem = dst;
+        Elem = PackedArray.Widen(Elem?.Length == 128 ? Elem : null,
+                                 length: 8 * ElemStride, blocks: 8,
+                                 oldStride: 16, newStride: ElemStride, copyPerBlock: 16);
     }
 }
 

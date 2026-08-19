@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace GPoseStudio;
 
-public static class LookStore
+public static partial class LookStore
 {
     internal static readonly HashSet<string> Exclude = new()
     {
@@ -14,6 +14,7 @@ public static class LookStore
         "DebugShowGate", "DebugShowClipping", "Bypass", "SwapRedBlue", "FlipVertical",
         "ShowGuides", "GuideThirds", "GuideGolden", "GuideCenter", "GuideHorizon", "GuideHorizonY", "GuideOpacity",
         "ExportAspect", "ShowExportFrame", "ExportScale", "ExportFormat", "ExportJpegQuality",
+        "EmbedLookInPng",
         "Pinned",
     };
 
@@ -26,6 +27,44 @@ public static class LookStore
             return d;
         }
     }
+
+    public static bool IsNameUsable(string? raw, out string error) => LookName.IsUsable(raw, out error);
+
+    private static bool TryResolve(string? name, out string path, out string error)
+    {
+        path = "";
+        if (!IsNameUsable(name, out error)) return false;
+
+        try
+        {
+            var dir = Path.GetFullPath(FolderPath);
+            var full = Path.GetFullPath(Path.Combine(dir, LookName.Clean(name) + ".json"));
+            var root = dir.EndsWith(Path.DirectorySeparatorChar) ? dir : dir + Path.DirectorySeparatorChar;
+
+            if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
+                error = "That name does not resolve inside the looks folder.";
+                return false;
+            }
+            if (full.Length > LookName.MaxPathLength)
+            {
+                error = "That name makes the file path too long. Use a shorter one.";
+                return false;
+            }
+
+            path = full;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = "That name cannot be used as a file.";
+            Services.Log.Warning($"LookStore.TryResolve('{name}') failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private const int MaxLookBytes = 4 * 1024 * 1024;
+    private static readonly JsonSerializerOptions ReadOptions = new() { MaxDepth = 32 };
 
     public static List<string> List()
     {
@@ -40,67 +79,140 @@ public static class LookStore
         catch { return new List<string>(); }
     }
 
-    public enum Part { All, Grade, Background, Light, Subject, Camera }
+    private static readonly HashSet<string> NotShareable = new() { "ElemImages" };
 
-    private static readonly (string Prefix, Part Part)[] PartMap =
-    {
-        ("Bg", Part.Background), ("Blend", Part.Background), ("Fg", Part.Background),
-        ("Univ", Part.Background), ("Pat", Part.Background), ("EnBackdrop", Part.Background),
-        ("EnBgFill", Part.Background), ("EnBgBlur", Part.Background), ("EnForeground", Part.Background),
-        ("EnFog", Part.Background), ("Fog", Part.Background), ("EnFrost", Part.Background),
-        ("Frost", Part.Background), ("EnSubjectIso", Part.Background),
-        ("Bloom", Part.Light), ("Halation", Part.Light), ("Orton", Part.Light),
-        ("Glamour", Part.Light), ("Godray", Part.Light), ("Anam", Part.Light),
-        ("Spot", Part.Light), ("Backlight", Part.Light), ("Gobo", Part.Light),
-        ("Halo", Part.Light), ("Shadow", Part.Light), ("Ground", Part.Light),
-        ("BackdropLight", Part.Light), ("EnGlow", Part.Light), ("EnShadow", Part.Light),
-        ("EnGobo", Part.Light), ("EnSpot", Part.Light), ("EnHalo", Part.Light),
-        ("EnGround", Part.Light), ("EnBacklight", Part.Light), ("Wash", Part.Light),
-        ("Leak", Part.Light), ("Caustic", Part.Light),
-        ("Rim", Part.Subject), ("Skin", Part.Subject), ("Beauty", Part.Subject),
-        ("Wet", Part.Subject), ("SubjectPop", Part.Subject), ("EnRim", Part.Subject),
-        ("EnSkin", Part.Subject), ("EnBeauty", Part.Subject), ("EnWet", Part.Subject),
-        ("Edge", Part.Subject), ("EnEdge", Part.Subject),
-        ("Dof", Part.Camera), ("Tilt", Part.Camera), ("Film", Part.Camera),
-        ("Lens", Part.Camera), ("Vignette", Part.Camera), ("Grain", Part.Camera),
-        ("Chroma", Part.Camera), ("Warp", Part.Camera), ("Prism", Part.Camera),
-        ("EnLens", Part.Camera), ("EnDof", Part.Camera), ("EnTiltShift", Part.Camera),
-        ("EnWarp", Part.Camera), ("Letterbox", Part.Camera), ("Soft", Part.Camera),
-    };
-
-    private static Part PartOf(string name)
-    {
-        foreach (var (prefix, part) in PartMap)
-            if (name.StartsWith(prefix, StringComparison.Ordinal)) return part;
-        return Part.Grade;
-    }
-
-    public static string Capture(PluginConfig cfg)
+    public static string Capture(PluginConfig cfg, bool forSharing = false)
     {
         var dict = new Dictionary<string, object?>();
         foreach (var p in typeof(PluginConfig).GetProperties())
-            if (p.CanRead && p.CanWrite && !Exclude.Contains(p.Name))
-                dict[p.Name] = p.GetValue(cfg);
+        {
+            if (!p.CanRead || !p.CanWrite || Exclude.Contains(p.Name)) continue;
+            if (forSharing && NotShareable.Contains(p.Name)) continue;
+            dict[p.Name] = p.GetValue(cfg);
+        }
         return JsonSerializer.Serialize(dict, new JsonSerializerOptions { WriteIndented = true });
     }
 
-    public static void Save(string name, PluginConfig cfg) =>
-        File.WriteAllText(Path.Combine(FolderPath, Sanitize(name) + ".json"), Capture(cfg));
+    public static bool SaveToFile(string path, PluginConfig cfg, out string error)
+    {
+        error = "";
+        try
+        {
+            var tmp = path + ".tmp";
+            File.WriteAllText(tmp, Capture(cfg, forSharing: true));
+            File.Move(tmp, path, overwrite: true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Could not write that file: {ex.Message}";
+            Services.Log.Warning($"LookStore.SaveToFile('{path}') failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    public static bool LoadFromFile(string path, PluginConfig cfg, Part part, out string error)
+    {
+        error = "";
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists) { error = "That file does not exist."; return false; }
+            if (info.Length > MaxImportBytes)
+            {
+                error = "That file is too large to be a look or an exported image.";
+                return false;
+            }
+
+            var bytes = File.ReadAllBytes(path);
+
+            if (Png.TryReadEmbeddedText(bytes, out var embedded))
+            {
+                if (!Apply(embedded, cfg, part)) { error = "That image carries a look this build cannot read."; return false; }
+                return true;
+            }
+
+            if (LooksBinary(bytes))
+            {
+                error = "That image has no look embedded in it.";
+                return false;
+            }
+
+            var json = System.Text.Encoding.UTF8.GetString(bytes);
+            if (!Apply(json, cfg, part)) { error = "That file is not a look."; return false; }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Could not read that file: {ex.Message}";
+            Services.Log.Warning($"LookStore.LoadFromFile('{path}') failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private const int MaxImportBytes = 64 * 1024 * 1024;
+
+    private static bool LooksBinary(byte[] bytes)
+    {
+        int n = Math.Min(bytes.Length, 512);
+        for (int i = 0; i < n; i++)
+        {
+            byte b = bytes[i];
+            if (b == 0) return true;
+            if (b == (byte)'{') return false;
+            if (b is (byte)' ' or (byte)'\r' or (byte)'\n' or (byte)'\t' or 0xEF or 0xBB or 0xBF) continue;
+            return true;
+        }
+        return true;
+    }
+
+    public static bool Save(string name, PluginConfig cfg, out string error)
+    {
+        if (!TryResolve(name, out var path, out error)) return false;
+
+        var tmp = path + ".tmp";
+        try
+        {
+            File.WriteAllText(tmp, Capture(cfg));
+            File.Move(tmp, path, overwrite: true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch {  }
+            error = $"Could not save the look: {ex.Message}";
+            Services.Log.Warning($"LookStore.Save('{name}') failed: {ex}");
+            return false;
+        }
+    }
 
     public static bool Load(string name, PluginConfig cfg) => Load(name, cfg, Part.All);
 
     public static bool Load(string name, PluginConfig cfg, Part part)
     {
-        var path = Path.Combine(FolderPath, Sanitize(name) + ".json");
-        if (!File.Exists(path)) return false;
-        try { return Apply(File.ReadAllText(path), cfg, part); }
-        catch { return false; }
+        if (!TryResolve(name, out var path, out _)) return false;
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists) return false;
+            if (info.Length > MaxLookBytes)
+            {
+                Services.Log.Warning($"LookStore.Load('{name}'): {info.Length} bytes exceeds the cap; refusing.");
+                return false;
+            }
+            return Apply(File.ReadAllText(path), cfg, part);
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Warning($"LookStore.Load('{name}') failed: {ex.Message}");
+            return false;
+        }
     }
 
     public static bool Apply(string json, PluginConfig cfg, Part part)
     {
         Dictionary<string, JsonElement>? dict;
-        try { dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json); }
+        try { dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, ReadOptions); }
         catch { return false; }
         if (dict == null) return false;
 
@@ -151,10 +263,20 @@ public static class LookStore
         return true;
     }
 
-    public static void Delete(string name)
+    public static bool Delete(string name, out string error)
     {
-        try { File.Delete(Path.Combine(FolderPath, Sanitize(name) + ".json")); }
-        catch {  }
+        if (!TryResolve(name, out var path, out error)) return false;
+        try
+        {
+            File.Delete(path);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Could not delete the look: {ex.Message}";
+            Services.Log.Warning($"LookStore.Delete('{name}') failed: {ex.Message}");
+            return false;
+        }
     }
 
     public static readonly (string Name, string Cat, Action<PluginConfig> Apply)[] Builtins =
@@ -188,7 +310,7 @@ public static class LookStore
     };
 
     public static bool Exists(string name) =>
-        File.Exists(Path.Combine(FolderPath, Sanitize(name) + ".json"));
+        TryResolve(name, out var path, out _) && File.Exists(path);
 
     private const int BuiltinsVersion = 59;
     private static string MarkerPath => Path.Combine(FolderPath, ".builtins");
@@ -206,7 +328,8 @@ public static class LookStore
             var tmp = new PluginConfig();
             apply(tmp);
             tmp.CarryPatternIdentity();
-            Save(name, tmp);
+            if (!Save(name, tmp, out var err))
+                Services.Log.Warning($"could not seed built-in look '{name}': {err}");
         }
         if (refresh) { try { File.WriteAllText(MarkerPath, BuiltinsVersion.ToString()); } catch { } }
     }
@@ -214,9 +337,15 @@ public static class LookStore
     public static void RegenerateBuiltin(string name)
     {
         foreach (var (n, _, apply) in Builtins)
-            if (n == name) { var tmp = new PluginConfig(); apply(tmp); tmp.CarryPatternIdentity(); Save(name, tmp); return; }
+            if (n == name)
+            {
+                var tmp = new PluginConfig();
+                apply(tmp);
+                tmp.CarryPatternIdentity();
+                if (!Save(name, tmp, out var err))
+                    Services.Log.Warning($"could not regenerate built-in look '{name}': {err}");
+                return;
+            }
     }
 
-    private static string Sanitize(string n) =>
-        string.Concat(n.Trim().Split(Path.GetInvalidFileNameChars()));
 }

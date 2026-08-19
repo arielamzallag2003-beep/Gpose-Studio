@@ -14,6 +14,15 @@
     <!-- Pure-logic files only; these have NO Dalamud/game dependency, so the
          suite runs anywhere (including the dev environment). -->
     <Compile Include="..\src\Png.cs" />
+    <Compile Include="..\src\LookName.cs" />
+    <Compile Include="..\src\LookParts.cs" />
+    <Compile Include="..\src\PackedArray.cs" />
+    <Compile Include="..\src\Frame.cs" />
     <Compile Include="PngTests.cs" />
+    <Compile Include="PngEmbedTests.cs" />
+    <Compile Include="LookNameTests.cs" />
+    <Compile Include="LookPartsTests.cs" />
+    <Compile Include="PackedArrayTests.cs" />
+    <Compile Include="FrameTests.cs" />
   </ItemGroup>
 </Project>

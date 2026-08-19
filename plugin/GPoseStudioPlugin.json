@@ -5,7 +5,15 @@
   "Description": "Captures the GPose frame and applies GPoseStudio color/lighting looks. Cosmetic, client-side only. Works alongside Brio/Ktisis.",
   "InternalName": "GPoseStudioPlugin",
   "ApplicableVersion": "any",
-  "Tags": ["gpose", "screenshot", "cosmetic", "post-processing"],
-  "CategoryTags": ["other"],
-  "AcceptsFeedback": false
+  "Tags": [
+    "gpose",
+    "screenshot",
+    "cosmetic",
+    "post-processing"
+  ],
+  "CategoryTags": [
+    "other"
+  ],
+  "AcceptsFeedback": false,
+  "Changelog": "0.8.0 - Looks travel: a look is stored inside exported PNGs, so an image can be imported later to recover it. Import and export a look as a file. First-run help on the Looks tab.\n0.7.2 - 89 unit tests, and a release that refuses to publish over a failing suite.\n0.7.1 - Look files are written atomically and validated; the config carries a schema version so migrations are keyed to it rather than guessed from array lengths.\n0.7.0 - Undo, partial look loading, clipping warnings, a cast ground shadow and a final grade over the composite. Fixed a stale depth view that could turn the frame black."
 }

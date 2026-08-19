@@ -35,7 +35,7 @@ public sealed class MainWindow : Window, IDisposable
     private static readonly string[] UiFgBlend = { "Over", "Add (glow)", "Screen", "Multiply (void)" };
     private static readonly string[] UiFgDepth = { "Everything", "Near / subject", "Far / background" };
     private static readonly string[] UiApplyPart =
-        { "Everything", "Grade only", "Background only", "Light only", "Subject only", "Camera only" };
+        { "Everything", "Grade", "Background", "Light", "Subject", "Camera", "FX", "Overlays" };
     private static readonly string[] UiGroundMode = { "Placed blob", "Cast from silhouette" };
     private static readonly string[] UiGobo = { "Venetian blinds", "Window frame", "Lace / web", "Foliage dapple" };
     private static readonly string[] UiParticle = { "Petals / dust", "Hearts", "Bubbles" };
@@ -1230,6 +1230,17 @@ public sealed class MainWindow : Window, IDisposable
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.TextDisabled("Capture fix-ups — only if the image looks wrong");
+        var emb = cfg.EmbedLookInPng;
+        if (ImGui.Checkbox("Store the look inside exported PNGs", ref emb)) { cfg.EmbedLookInPng = emb; _dirty = true; }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "Writes the settings into the file, so the image can be imported later\n" +
+            "on the Looks tab to get its look back. Costs a few kilobytes and does\n" +
+            "not touch a single pixel.\n\n" +
+            "Only numbers travel. Element-layer image paths are left out, so nothing\n" +
+            "about your folders goes into a picture you share. JPEG has nowhere to\n" +
+            "put it, so it carries nothing either way.");
+        ImGui.Spacing();
+
         var swap = cfg.SwapRedBlue;
         if (ImGui.Checkbox("Swap red/blue (fix blue tint)", ref swap)) { cfg.SwapRedBlue = swap; _dirty = true; }
         var flip = cfg.FlipVertical;
@@ -1689,11 +1700,15 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.PopItemWidth();
             var caps = BgCaps(st);
             {
+                if (ReferenceEquals(cfg, Plugin.Config))
+                {
                 cfg.BgRecolor = Knob("Strength", cfg.BgRecolor, 0f, 1f, Defaults.BgRecolor, "How strongly the background style is applied (1 = fully replaces the background).");
                 cfg.BgRecolorStart = Knob("Start (depth)", cfg.BgRecolorStart, 0f, 0.5f, Defaults.BgRecolorStart, "How far out the background begins. Lower it to catch a wall or object just behind the subject.");
                 GateToggle(cfg, "backdrop");
                 cfg.BgRecolorFeather = Knob("Cutoff softness", cfg.BgRecolorFeather, 0.003f, 0.3f, Defaults.BgRecolorFeather, "Width of the depth transition. LOW = a hard cut right behind the subject, so a wall/object just behind it still gets replaced without bleeding onto the subject. HIGH = a soft fade. To cover walls: lower Start and lower this together.", "%.3f");
                 cfg.BgKeepVfx = Knob("Keep VFX", cfg.BgKeepVfx, 0f, 1f, Defaults.BgKeepVfx, "Keeps glowing effect particles that float AROUND the subject (they don't write depth, so the background would otherwise paint over them). 0 = off.");
+                }
+                else ImGui.TextDisabled("Strength, depth gate and Keep VFX are set once for the\nwhole backdrop, on the first field.");
                 ImGui.Spacing();
                 ImGui.TextDisabled("Key light on the backdrop — a real studio backdrop is never flat.");
                 cfg.BackdropLightAmt = Knob("Backdrop light", cfg.BackdropLightAmt, -1f, 1f, Defaults.BackdropLightAmt, "Lights the backdrop with a hotspot that falls off outward, so it looks lit by the same lamp as your subject. Negative flips it (bright edges, dark centre).");
@@ -2304,22 +2319,102 @@ public sealed class MainWindow : Window, IDisposable
         using (ImRaii.Disabled(_lookFilter.Length == 0))
             if (ImGui.Button("Clear", new Vector2(76f, 0))) { _lookFilter = ""; _confirmDelete = ""; }
 
+        if (ImGui.CollapsingHeader("New here? Start with this"))
+        {
+            ImGui.Indent(10f);
+            ImGui.TextWrapped(
+                "1.  Click a look below. That loads it, and the other tabs are then just " +
+                "its settings for you to nudge.");
+            ImGui.TextWrapped(
+                "2.  Tick Live preview at the top. It is a still frame, not live video, so " +
+                "set your pose and camera first and then preview.");
+            ImGui.TextWrapped(
+                "3.  Purple, black, or upside down? That is a capture quirk, not you. " +
+                "Export tab, Capture fix-ups: untick Swap red/blue and Flip vertically. " +
+                "Set once, kept forever.");
+            ImGui.TextWrapped(
+                "4.  Bypass at the top shows the same frame without effects, for a quick " +
+                "before and after.");
+            ImGui.TextWrapped(
+                "5.  The F / C / B buttons on an effect choose what it touches: Foreground, " +
+                "Character, Background.");
+            ImGui.Spacing();
+            ImGui.TextWrapped(
+                "The one control worth knowing early is Start (depth) in the Background tab. " +
+                "It decides how far away counts as background. Set too far it selects nothing " +
+                "and the backdrop never appears, which looks broken but is not \u2014 tick " +
+                "Show what this covers beside it and lower the value until the wall behind " +
+                "your subject turns magenta.");
+            ImGui.Spacing();
+            ImGui.TextWrapped(
+                "The search box at the top searches every control in every tab at once.");
+            ImGui.Unindent(10f);
+        }
+
         ImGui.PushItemWidth(-190f);
         ImGui.InputTextWithHint("##lookname", "Save current settings as\u2026", ref _lookName, 64);
         ImGui.PopItemWidth();
-        string trimmed = _lookName.Trim();
+        bool usable = LookStore.IsNameUsable(_lookName, out var nameError);
+        string trimmed = usable ? LookName.Clean(_lookName) : _lookName.Trim();
         bool exists = trimmed.Length > 0 && _lookList.Contains(trimmed);
         ImGui.SameLine();
-        using (ImRaii.Disabled(trimmed.Length == 0))
+        using (ImRaii.Disabled(!usable))
             if (ImGui.Button(exists ? "Overwrite" : "Save", new Vector2(84f, 0)))
             {
-                LookStore.Save(_lookName, cfg);
-                _status = $"Saved \u2018{trimmed}\u2019.";
-                _lookList = LookStore.List();
-                _lookSel = trimmed;
+                if (LookStore.Save(_lookName, cfg, out var saveError))
+                {
+                    _status = $"Saved \u2018{trimmed}\u2019.";
+                    _lookList = LookStore.List();
+                    _lookSel = trimmed;
+                }
+                else _status = saveError;
             }
         ImGui.SameLine();
         if (ImGui.Button("Folder", new Vector2(84f, 0))) OpenFolder(LookStore.FolderPath);
+
+        if (ImGui.Button("Import\u2026", new Vector2(84f, 0)))
+        {
+            _dialogs.OpenFileDialog("Import a look, or an image with one embedded",
+                "Look or image{.json,.png}", (ok, path) =>
+                {
+                    if (!ok || string.IsNullOrWhiteSpace(path)) return;
+                    PushUndo(cfg);
+                    if (LookStore.LoadFromFile(path, cfg, (LookStore.Part)_applyPart, out var impErr))
+                    {
+                        _dirty = true;
+                        _status = $"Imported from \u2018{Path.GetFileName(path)}\u2019. Save it to keep it.";
+                    }
+                    else _status = impErr;
+                });
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "Load a .json look, or a .png exported with its look inside it.\n" +
+            "Applies the same slice as clicking a look does, so set that first.\n" +
+            "Nothing is saved until you name it and press Save.");
+
+        ImGui.SameLine();
+        using (ImRaii.Disabled(!(_lookSel.Length > 0 && _lookList.Contains(_lookSel))))
+            if (ImGui.Button("Export\u2026", new Vector2(84f, 0)))
+            {
+                var picked = _lookSel;
+                _dialogs.SaveFileDialog("Export the selected look", ".json", picked, ".json",
+                    (ok, path) =>
+                    {
+                        if (!ok || string.IsNullOrWhiteSpace(path)) return;
+                        if (LookStore.SaveToFile(path, cfg, out var expErr))
+                            _status = $"Exported to \u2018{Path.GetFileName(path)}\u2019.";
+                        else _status = expErr;
+                    });
+            }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "Write the current settings to a file you can send to someone.\n" +
+            "Element-layer image paths are left out: they would not resolve\non another machine, and they name folders on this one.");
+        if (_lookName.Trim().Length > 0 && !usable)
+            ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), nameError);
+        else if (exists)
+            ImGui.TextDisabled($"\u2018{trimmed}\u2019 already exists \u2014 saving replaces it.");
+        else if (usable && trimmed != _lookName.Trim())
+            ImGui.TextDisabled($"Will be saved as \u2018{trimmed}\u2019.");
 
         bool has = _lookSel.Length > 0 && _lookList.Contains(_lookSel);
         bool isBuiltin = has && cat.ContainsKey(_lookSel);
@@ -2336,7 +2431,8 @@ public sealed class MainWindow : Window, IDisposable
                 if (ImGui.SmallButton("Reset##looksel"))
                 {
                     LookStore.RegenerateBuiltin(_lookSel);
-                    LookStore.Load(_lookSel, cfg); cfg.Save();
+                    LookStore.Load(_lookSel, cfg);
+                    _dirty = true;
                     _lookList = LookStore.List();
                     _status = $"Reset \u2018{_lookSel}\u2019 to its original.";
                 }
@@ -2346,9 +2442,12 @@ public sealed class MainWindow : Window, IDisposable
             {
                 if (ImGui.SmallButton("Confirm##lookdel"))
                 {
-                    LookStore.Delete(_lookSel);
-                    _status = $"Deleted \u2018{_lookSel}\u2019.";
-                    _lookSel = ""; _confirmDelete = "";
+                    if (LookStore.Delete(_lookSel, out var delError))
+                    {
+                        _status = $"Deleted \u2018{_lookSel}\u2019.";
+                        _lookSel = ""; _confirmDelete = "";
+                    }
+                    else _status = delError;
                     _lookList = LookStore.List();
                 }
             }
@@ -2384,11 +2483,10 @@ public sealed class MainWindow : Window, IDisposable
             if (ImGui.Selectable(n, _lookSel == n))
             {
                 _confirmDelete = "";
-                PushUndo(cfg);
                 var part = (LookStore.Part)_applyPart;
                 if (LookStore.Load(n, cfg, part))
                 {
-                    cfg.Save(); _lookSel = n;
+                    _dirty = true; _lookSel = n;
                     _status = part == LookStore.Part.All
                         ? $"Loaded \u2018{n}\u2019."
                         : $"Loaded the {UiApplyPart[_applyPart].ToLowerInvariant()} from \u2018{n}\u2019.";

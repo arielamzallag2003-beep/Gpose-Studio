@@ -22,6 +22,13 @@ public sealed class LiveOverlay : IDisposable
     private IDalamudTextureWrap? _incoming;
     private bool _capturing;
     private long _nextCaptureTick;
+
+    private long _captureStartedAt;
+    private const long CaptureStuckMs = 1500;
+    private long _lastStuckLog;
+
+    private int _framesSinceRender;
+    private const int RevalidateEveryFrames = 30;
     private bool _disposed;
     private readonly System.Diagnostics.Stopwatch _animClock = System.Diagnostics.Stopwatch.StartNew();
     private readonly nint[] _lastMemeSrvs = new nint[8];
@@ -29,6 +36,7 @@ public sealed class LiveOverlay : IDisposable
     private bool _loggedDepth;
     private GpuRenderer.Params _lastParams;
     private nint _lastOutSrv;
+    private nint _lastDepthSrv;
     private bool _haveRender;
     private bool _captureChanged;
     private GposePanel.Rect[] _gposeRects = Array.Empty<GposePanel.Rect>();
@@ -94,9 +102,19 @@ public sealed class LiveOverlay : IDisposable
                 _captureChanged = true;
             }
 
-            if (!_capturing && (Environment.TickCount64 >= _nextCaptureTick || (_exportPending && _capture is null)))
+            bool captureStuck = _capturing && Environment.TickCount64 - _captureStartedAt > CaptureStuckMs;
+            if ((!_capturing || captureStuck)
+                && (Environment.TickCount64 >= _nextCaptureTick || (_exportPending && _capture is null)))
             {
+                if (captureStuck && Environment.TickCount64 - _lastStuckLog > 5000)
+                {
+                    _lastStuckLog = Environment.TickCount64;
+                    Services.Log.Warning(
+                        "capture did not return within {0} ms; starting another so the frame keeps refreshing.",
+                        CaptureStuckMs);
+                }
                 _capturing = true;
+                _captureStartedAt = Environment.TickCount64;
                 StartCapture(ImGui.GetMainViewport().ID);
             }
 
@@ -383,13 +401,19 @@ public sealed class LiveOverlay : IDisposable
                 unsafe { int n = Math.Min(224, cfg.FgField.Length); for (int k = 0; k < n; k++) p.FgField[k] = cfg.FgField[k]; }
             GateGroups(ref p, cfg);
 
-            bool needRender = _exportPending || !_haveRender || _captureChanged || memeChanged || !ParamsEqual(in p, in _lastParams);
+            _framesSinceRender++;
+            bool needRender = _exportPending || !_haveRender || _captureChanged || memeChanged
+                              || depth.Srv != _lastDepthSrv
+                              || _framesSinceRender >= RevalidateEveryFrames
+                              || !ParamsEqual(in p, in _lastParams);
             nint outSrv;
             if (needRender)
             {
                 outSrv = _gpu.Render(srcPtr, depth.Srv, w, h, p, memeSrvs);
                 if (outSrv == 0) return;
                 _lastParams = p; _lastOutSrv = outSrv; _haveRender = true; _captureChanged = false;
+                _lastDepthSrv = depth.Srv;
+                _framesSinceRender = 0;
                 Array.Copy(memeSrvs, _lastMemeSrvs, 8);
             }
             else
@@ -409,6 +433,9 @@ public sealed class LiveOverlay : IDisposable
                 var dir = _exportDir;
                 var done = _exportDone;
 
+                bool debugWasOn = p.DebugView != 0;
+                if (debugWasOn) p.DebugView = 0;
+
                 int scale = Math.Clamp(Plugin.Config.ExportScale, 1, 4);
                 while (scale > 1 && ((long)w * scale > 16384 || (long)h * scale > 16384)) scale >>= 1;
 
@@ -416,10 +443,18 @@ public sealed class LiveOverlay : IDisposable
                 {
                     _gpu.Render(srcPtr, depth.Srv, w * scale, h * scale, p, memeSrvs, scale);
                 }
+                else if (debugWasOn)
+                {
+                    _gpu.Render(srcPtr, depth.Srv, w, h, p, memeSrvs, 1);
+                }
+                if (debugWasOn) _haveRender = false;
 
                 var rb = _gpu.ReadbackLastOutput();
                 if (rb is { } img)
                 {
+                    if (IsEffectivelyBlack(img.Rgba))
+                        done?.Invoke("warning: the exported image is black. Change any control to force a re-render, then export again.");
+
                     var (cw, ch, crgba) = CropForExport(img.Width, img.Height, img.Rgba, Plugin.Config.ExportAspect);
                     if (Plugin.Config.ShowGuides)
                         BurnGuidesInto(crgba, cw, ch, Plugin.Config, scale);
@@ -427,7 +462,8 @@ public sealed class LiveOverlay : IDisposable
                 }
                 else done?.Invoke("error: GPU readback failed");
 
-                if (scale > 1) { _haveRender = false; _lastOutSrv = 0; _captureChanged = true; }
+                _haveRender = false; _lastOutSrv = 0; _lastDepthSrv = 0;
+                if (scale > 1) _captureChanged = true;
             }
         }
         catch (Exception ex)
@@ -794,12 +830,27 @@ public sealed class LiveOverlay : IDisposable
         dl.AddImage(tex, a, b, (a - fullPos) / fullSize, (b - fullPos) / fullSize);
     }
 
+    private static bool IsEffectivelyBlack(byte[] rgba)
+    {
+        int px = rgba.Length / 4;
+        if (px <= 0) return false;
+        int step = Math.Max(1, px / 4096);
+        for (int i = 0; i < px; i += step)
+        {
+            int o = i * 4;
+            if (rgba[o] > 8 || rgba[o + 1] > 8 || rgba[o + 2] > 8) return false;
+        }
+        return true;
+    }
+
     private static void SaveImageAsync(int w, int h, byte[] rgba, string dir, Action<string>? done)
     {
         bool jpeg = Plugin.Config.ExportFormat == 1;
         int quality = Plugin.Config.ExportJpegQuality;
         bool framed = Plugin.Config.EnFrame;
-        var fopts = new Frame.Opts(Plugin.Config);
+        var fopts = Plugin.Config.FrameOpts();
+        string? embed = (!jpeg && Plugin.Config.EmbedLookInPng)
+                        ? LookStore.Capture(Plugin.Config, forSharing: true) : null;
         _ = Task.Run(async () =>
         {
             try
@@ -809,7 +860,7 @@ public sealed class LiveOverlay : IDisposable
                 Directory.CreateDirectory(dir);
                 string ext = jpeg ? "jpg" : "png";
                 var path = Path.Combine(dir, $"gpose_{DateTime.Now:yyyyMMdd_HHmmss_fff}.{ext}");
-                byte[] bytes = jpeg ? Jpeg.Encode(w, h, rgba, quality) : Png.Encode(w, h, rgba);
+                byte[] bytes = jpeg ? Jpeg.Encode(w, h, rgba, quality) : Png.Encode(w, h, rgba, embed);
                 var tmp = path + ".tmp";
                 await File.WriteAllBytesAsync(tmp, bytes).ConfigureAwait(false);
                 File.Move(tmp, path, overwrite: true);
@@ -832,7 +883,11 @@ public sealed class LiveOverlay : IDisposable
         staged?.Dispose();
         _haveRender = false;
         _lastOutSrv = 0;
+        _lastDepthSrv = 0;
         _captureChanged = false;
+        _framesSinceRender = 0;
+        _capturing = false;
+        _captureStartedAt = 0;
     }
 
     public void Dispose()

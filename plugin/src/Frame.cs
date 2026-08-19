@@ -10,19 +10,22 @@ internal static class Frame
         public readonly float MatR, MatG, MatB, KeyR, KeyG, KeyB;
         public readonly float Smooth;
         public readonly bool Alpha, Inset;
-        public Opts(PluginConfig c)
+        public Opts(bool inset, float smooth, float corner, float mat, float outerCorner,
+                    float keyline, float shadow, float bottom,
+                    float matR, float matG, float matB,
+                    float keyR, float keyG, float keyB, bool alpha)
         {
-            Inset = c.FrameMatInset;
-            Smooth = Math.Clamp(c.FrameSmooth, 0f, 1f);
-            Corner = Math.Clamp(c.FrameCorner, 0f, 0.5f);
-            Mat = Math.Clamp(c.FrameMat, 0f, 0.4f);
-            OuterCorner = Math.Clamp(c.FrameOuterCorner, 0f, 0.5f);
-            Keyline = Math.Clamp(c.FrameKeyline, 0f, 0.05f);
-            Shadow = Math.Clamp(c.FrameShadow, 0f, 1f);
-            Bottom = Math.Clamp(c.FrameBottom, 0f, 1f);
-            MatR = c.FrameMatR; MatG = c.FrameMatG; MatB = c.FrameMatB;
-            KeyR = c.FrameKeyR; KeyG = c.FrameKeyG; KeyB = c.FrameKeyB;
-            Alpha = c.FrameAlpha;
+            Inset = inset;
+            Smooth = Math.Clamp(smooth, 0f, 1f);
+            Corner = Math.Clamp(corner, 0f, 0.5f);
+            Mat = Math.Clamp(mat, 0f, 0.4f);
+            OuterCorner = Math.Clamp(outerCorner, 0f, 0.5f);
+            Keyline = Math.Clamp(keyline, 0f, 0.05f);
+            Shadow = Math.Clamp(shadow, 0f, 1f);
+            Bottom = Math.Clamp(bottom, 0f, 1f);
+            MatR = matR; MatG = matG; MatB = matB;
+            KeyR = keyR; KeyG = keyG; KeyB = keyB;
+            Alpha = alpha;
         }
         public bool IsNoOp => Mat <= 0f && Corner <= 0f && Keyline <= 0f && Shadow <= 0f;
     }
