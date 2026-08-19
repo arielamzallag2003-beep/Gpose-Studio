@@ -37,6 +37,11 @@ public sealed class LiveOverlay : IDisposable
     private GpuRenderer.Params _lastParams;
     private nint _lastOutSrv;
     private nint _lastDepthSrv;
+
+    private nint _depthSeenSrv;
+    private int _depthSettled;
+    private const int DepthSettleFrames = 3;
+    private bool _loggedDepthSettle;
     private bool _haveRender;
     private bool _captureChanged;
     private GposePanel.Rect[] _gposeRects = Array.Empty<GposePanel.Rect>();
@@ -126,6 +131,24 @@ public sealed class LiveOverlay : IDisposable
 
             var depth = DepthBuffer.TryGet();
             DepthAvailable = depth.Srv != 0;
+
+            if (depth.Srv != _depthSeenSrv)
+            {
+                _depthSeenSrv = depth.Srv;
+                _depthSettled = 0;
+            }
+            else if (_depthSettled < DepthSettleFrames)
+            {
+                _depthSettled++;
+            }
+            bool depthTrusted = depth.Srv != 0 && _depthSettled >= DepthSettleFrames;
+
+            nint depthSrv = depthTrusted ? depth.Srv : 0;
+            if (!depthTrusted && depth.Srv != 0 && !_loggedDepthSettle)
+            {
+                _loggedDepthSettle = true;
+                Services.Log.Debug("depth view changed; skipping depth effects until it settles.");
+            }
             if (!_loggedDepth)
             {
                 _loggedDepth = true;
@@ -190,8 +213,8 @@ public sealed class LiveOverlay : IDisposable
                 DepthUvScaleY = depth.ScaleY,
                 TexelX = 1f / w,
                 TexelY = 1f / h,
-                HasDepth = depth.Srv != 0 ? 1 : 0,
-                DebugView = cfg.DebugShowGate ? 2 : (cfg.DebugShowDepth ? 1 : (cfg.DebugShowClipping ? 3 : 0)),
+                HasDepth = depthTrusted ? 1 : 0,
+                DebugView = cfg.DebugShowGate ? 2 : (cfg.DebugShowDepth ? 1 : (cfg.DebugShowClipping ? 3 : (cfg.DebugShowMatte && cfg.ExportTransparent ? 4 : 0))),
                 BlackPoint = cfg.BlackPoint,
                 WhitePoint = cfg.WhitePoint,
                 HueShift = cfg.HueShift,
@@ -291,6 +314,8 @@ public sealed class LiveOverlay : IDisposable
                 PatColR = cfg.PatColR, PatColG = cfg.PatColG, PatColB = cfg.PatColB,
                 PatColMode = cfg.PatColMode, PatCol2R = cfg.PatCol2R, PatCol2G = cfg.PatCol2G, PatCol2B = cfg.PatCol2B,
                 PatMatTint = cfg.PatMatTint,
+                Cutout = 0,
+                CutoutFeather = cfg.CutoutFeather, CutoutShrink = cfg.CutoutShrink,
                 EnFinal = cfg.EnFinalGrade ? 1 : 0, FinalExposure = cfg.FinalExposure,
                 FinalContrast = cfg.FinalContrast, FinalSat = cfg.FinalSat,
                 FinalTemp = cfg.FinalTemp, FinalLift = cfg.FinalLift,
@@ -403,16 +428,16 @@ public sealed class LiveOverlay : IDisposable
 
             _framesSinceRender++;
             bool needRender = _exportPending || !_haveRender || _captureChanged || memeChanged
-                              || depth.Srv != _lastDepthSrv
+                              || depthSrv != _lastDepthSrv
                               || _framesSinceRender >= RevalidateEveryFrames
                               || !ParamsEqual(in p, in _lastParams);
             nint outSrv;
             if (needRender)
             {
-                outSrv = _gpu.Render(srcPtr, depth.Srv, w, h, p, memeSrvs);
+                outSrv = _gpu.Render(srcPtr, depthSrv, w, h, p, memeSrvs);
                 if (outSrv == 0) return;
                 _lastParams = p; _lastOutSrv = outSrv; _haveRender = true; _captureChanged = false;
-                _lastDepthSrv = depth.Srv;
+                _lastDepthSrv = depthSrv;
                 _framesSinceRender = 0;
                 Array.Copy(memeSrvs, _lastMemeSrvs, 8);
             }
@@ -430,29 +455,38 @@ public sealed class LiveOverlay : IDisposable
             if (_exportPending)
             {
                 _exportPending = false;
+                bool jpegOut = Plugin.Config.ExportFormat == 1;
                 var dir = _exportDir;
                 var done = _exportDone;
 
                 bool debugWasOn = p.DebugView != 0;
                 if (debugWasOn) p.DebugView = 0;
 
+                bool cutout = Plugin.Config.ExportTransparent && !jpegOut;
+                if (cutout)
+                {
+                    p.Cutout = 1;
+                    p.BgRecolor = 0f;
+                    p.BgFill = 0f;
+                }
+
                 int scale = Math.Clamp(Plugin.Config.ExportScale, 1, 4);
                 while (scale > 1 && ((long)w * scale > 16384 || (long)h * scale > 16384)) scale >>= 1;
 
                 if (scale > 1)
                 {
-                    _gpu.Render(srcPtr, depth.Srv, w * scale, h * scale, p, memeSrvs, scale);
+                    _gpu.Render(srcPtr, depthSrv, w * scale, h * scale, p, memeSrvs, scale);
                 }
-                else if (debugWasOn)
+                else if (debugWasOn || cutout)
                 {
-                    _gpu.Render(srcPtr, depth.Srv, w, h, p, memeSrvs, 1);
+                    _gpu.Render(srcPtr, depthSrv, w, h, p, memeSrvs, 1);
                 }
-                if (debugWasOn) _haveRender = false;
+                if (debugWasOn || cutout) _haveRender = false;
 
                 var rb = _gpu.ReadbackLastOutput();
                 if (rb is { } img)
                 {
-                    if (IsEffectivelyBlack(img.Rgba))
+                    if (!cutout && IsEffectivelyBlack(img.Rgba))
                         done?.Invoke("warning: the exported image is black. Change any control to force a re-render, then export again.");
 
                     var (cw, ch, crgba) = CropForExport(img.Width, img.Height, img.Rgba, Plugin.Config.ExportAspect);
@@ -888,6 +922,8 @@ public sealed class LiveOverlay : IDisposable
         _framesSinceRender = 0;
         _capturing = false;
         _captureStartedAt = 0;
+        _depthSeenSrv = 0;
+        _depthSettled = 0;
     }
 
     public void Dispose()

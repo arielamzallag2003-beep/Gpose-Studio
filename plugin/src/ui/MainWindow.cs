@@ -204,7 +204,7 @@ public sealed class MainWindow : Window, IDisposable
         if (ImGui.Checkbox("Clipping", ref clip))
         {
             cfg.DebugShowClipping = clip;
-            if (clip) { cfg.DebugShowGate = false; cfg.DebugShowDepth = false; }
+            if (clip) { cfg.DebugShowGate = false; cfg.DebugShowDepth = false; cfg.DebugShowMatte = false; }
             _dirty = true;
         }
 
@@ -1236,6 +1236,49 @@ public sealed class MainWindow : Window, IDisposable
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.TextDisabled("Capture fix-ups — only if the image looks wrong");
+        var cut = cfg.ExportTransparent;
+        if (ImGui.Checkbox("Transparent background (PNG only)", ref cut))
+        {
+            cfg.ExportTransparent = cut;
+            if (!cut) cfg.DebugShowMatte = false;
+            _dirty = true;
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "Export the subject on nothing, for compositing elsewhere.\n\n" +
+            "The background style and the solid fill are switched off for the\n" +
+            "export only \u2014 a backdrop and a transparent background cannot both\n" +
+            "be true, and the preview keeps showing the look as you composed it.\n\n" +
+            "JPEG has no transparency, so this does nothing in that format.");
+
+        if (cfg.ExportTransparent)
+        {
+            ImGui.Indent(10f);
+            if (cfg.ExportFormat == 1)
+                ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f),
+                    "Format is JPEG, which has no transparency. Switch to PNG below.");
+
+            cfg.CutoutShrink = Knob("  Edge shrink", cfg.CutoutShrink, 0f, 1f, Defaults.CutoutShrink,
+                "Pulls the matte inward. The depth silhouette is a little wider than the character, because the\nanti-aliased pixels along the edge are a blend of subject and whatever was behind it \u2014 keeping those\nfully opaque is what leaves a halo of old background around a cutout. Raise this until the halo goes.");
+            cfg.CutoutFeather = Knob("  Edge softness", cfg.CutoutFeather, 0f, 1f, Defaults.CutoutFeather,
+                "How sharply alpha falls off. A little softness hides the depth buffer's stair-stepping;\ntoo much makes the subject look like it is dissolving.");
+
+            var mt = cfg.DebugShowMatte;
+            if (ImGui.Checkbox("  Preview the matte", ref mt))
+            {
+                cfg.DebugShowMatte = mt;
+                if (mt) { cfg.DebugShowGate = false; cfg.DebugShowDepth = false; cfg.DebugShowClipping = false; }
+                _dirty = true;
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+                "Shows what will be transparent, over a checkerboard, so the edge can be\njudged here rather than after opening the file somewhere else.");
+            if (cfg.DebugShowMatte)
+                ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), "  Matte preview is on \u2014 untick to see the shot.");
+
+            ImGui.TextDisabled("  Hair and effect particles do not write depth, so they are kept whole\n  rather than cut cleanly. That is a limit of depth, not of the setting.");
+            ImGui.Unindent(10f);
+            ImGui.Spacing();
+        }
+
         var emb = cfg.EmbedLookInPng;
         if (ImGui.Checkbox("Store the look inside exported PNGs", ref emb)) { cfg.EmbedLookInPng = emb; _dirty = true; }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(
@@ -2621,7 +2664,7 @@ public sealed class MainWindow : Window, IDisposable
         if (ImGui.Checkbox("Show what this covers##" + id, ref g))
         {
             Plugin.Config.DebugShowGate = g;
-            if (g) { Plugin.Config.DebugShowDepth = false; Plugin.Config.DebugShowClipping = false; }
+            if (g) { Plugin.Config.DebugShowDepth = false; Plugin.Config.DebugShowClipping = false; Plugin.Config.DebugShowMatte = false; }
             _dirty = true;
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(
@@ -2635,7 +2678,7 @@ public sealed class MainWindow : Window, IDisposable
         if (ImGui.Checkbox("Raw depth##" + id, ref d))
         {
             Plugin.Config.DebugShowDepth = d;
-            if (d) { Plugin.Config.DebugShowGate = false; Plugin.Config.DebugShowClipping = false; }
+            if (d) { Plugin.Config.DebugShowGate = false; Plugin.Config.DebugShowClipping = false; Plugin.Config.DebugShowMatte = false; }
             _dirty = true;
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(

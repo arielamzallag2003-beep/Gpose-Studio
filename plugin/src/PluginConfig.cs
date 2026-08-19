@@ -1086,6 +1086,11 @@ public sealed class PluginConfig : IPluginConfiguration
     public int ExportScale { get; set; } = 1;
     public int ExportFormat { get; set; } = 0;
     public bool EmbedLookInPng { get; set; } = true;
+
+    public bool ExportTransparent { get; set; } = false;
+    public float CutoutFeather { get; set; } = 0.3f;
+    public float CutoutShrink { get; set; } = 0.3f;
+    public bool DebugShowMatte { get; set; } = false;
     public int ExportJpegQuality { get; set; } = 92;
     public bool ShowExportFrame { get; set; } = true;
 

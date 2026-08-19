@@ -14,7 +14,7 @@ public static partial class LookStore
         "DebugShowGate", "DebugShowClipping", "Bypass", "SwapRedBlue", "FlipVertical",
         "ShowGuides", "GuideThirds", "GuideGolden", "GuideCenter", "GuideHorizon", "GuideHorizonY", "GuideOpacity",
         "ExportAspect", "ShowExportFrame", "ExportScale", "ExportFormat", "ExportJpegQuality",
-        "EmbedLookInPng",
+        "EmbedLookInPng", "ExportTransparent", "DebugShowMatte",
         "Pinned",
     };
 

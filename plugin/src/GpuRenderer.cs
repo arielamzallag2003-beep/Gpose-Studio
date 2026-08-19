@@ -238,6 +238,7 @@ public sealed class GpuRenderer : IDisposable
         public int GroundMode; public float GroundCastAngle; public float GroundCastLen; public float GroundPad0;
         public int EnFinal; public float FinalExposure; public float FinalContrast; public float FinalSat;
         public float FinalTemp; public float FinalLift; public float FinalGamma; public float FinalGain;
+        public int Cutout; public float CutoutFeather; public float CutoutShrink; public float CutoutPad;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -414,6 +415,7 @@ cbuffer P : register(b0) {
     int groundMode; float groundCastAngle; float groundCastLen; float groundPad0;
     int enFinal; float finalExposure; float finalContrast; float finalSat;
     float finalTemp; float finalLift; float finalGamma; float finalGain;
+    int cutout; float cutoutFeather; float cutoutShrink; float cutoutPad;
 };
 Texture2D colorTex : register(t0);
 Texture2D depthTex : register(t1);
@@ -3458,7 +3460,22 @@ float4 PS(VSOut i) : SV_Target {
         float bar = letterbox * 0.2;
         if (i.uv.y < bar || i.uv.y > 1.0 - bar) c = float3(0.0, 0.0, 0.0);
     }
-    return float4(saturate(c), 1.0);
+
+    float outA = 1.0;
+    if (cutout != 0 && hasDepth != 0) {
+        float start = bgRecolorStart + cutoutShrink * 0.05;
+        float soft = max(bgRecolorFeather, 0.003) + cutoutFeather * 0.05;
+        outA = 1.0 - smoothstep(start, start + soft, lin);
+    }
+
+    if (debugView == 4) {
+        float2 chk = floor(i.uv / max(float2(texelX, texelY), 1e-6) / 16.0);
+        float board = fmod(chk.x + chk.y, 2.0) * 0.18 + 0.10;
+        float3 m = lerp(float3(board, board, board), saturate(c), outA);
+        return float4(m, 1.0);
+    }
+
+    return float4(saturate(c), saturate(outA));
 }";
 
     private const string BloomHlsl = @"
