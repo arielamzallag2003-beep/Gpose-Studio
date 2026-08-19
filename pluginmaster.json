@@ -3,7 +3,7 @@
     "Author": "Mysterious Popoto",
     "Name": "GPoseStudio",
     "InternalName": "GPoseStudioPlugin",
-    "AssemblyVersion": "0.8.1.0",
+    "AssemblyVersion": "0.8.2.0",
     "Description": "Captures the GPose frame and applies GPoseStudio color/lighting looks. Cosmetic, client-side only. Works alongside Brio/Ktisis.",
     "ApplicableVersion": "any",
     "Tags": [
