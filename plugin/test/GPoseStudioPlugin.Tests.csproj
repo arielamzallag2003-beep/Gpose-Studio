@@ -18,11 +18,20 @@
     <Compile Include="..\src\LookParts.cs" />
     <Compile Include="..\src\PackedArray.cs" />
     <Compile Include="..\src\Frame.cs" />
+    <Compile Include="..\src\BuiltinGuard.cs" />
+    <!-- The two files a look actually round-trips through. They reach Dalamud in a
+         handful of spots, so TestServices.cs stands in for it: the seam is in the
+         build, not in the shipped code. -->
+    <Compile Include="..\src\PluginConfig.cs" />
+    <Compile Include="..\src\LookStore.cs" />
+    <Compile Include="TestServices.cs" />
     <Compile Include="PngTests.cs" />
     <Compile Include="PngEmbedTests.cs" />
     <Compile Include="LookNameTests.cs" />
     <Compile Include="LookPartsTests.cs" />
     <Compile Include="PackedArrayTests.cs" />
     <Compile Include="FrameTests.cs" />
+    <Compile Include="BuiltinGuardTests.cs" />
+    <Compile Include="LookRoundTripTests.cs" />
   </ItemGroup>
 </Project>

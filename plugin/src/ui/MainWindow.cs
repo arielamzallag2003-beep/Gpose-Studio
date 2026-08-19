@@ -30,6 +30,9 @@ public sealed class MainWindow : Window, IDisposable
 
     private string _peekBackup = "";
 
+    private string _loadedSnapshot = "";
+    private bool _editedSinceLoad;
+
     private static readonly string[] UiScopeModes = { "Both", "Foreground only", "Background only" };
     private static readonly string[] UiBases = { "Linear", "Radial", "Diamond", "Conic", "Mirror", "Spiral" };
     private static readonly string[] UiNoises = { "None", "Fractal (fbm)", "Ridged veins", "Voronoi cells", "Turbulence", "Warped fractal", "Billow (puffy)", "Marble veins", "Rings / wood", "Cracks", "Dots / cells", "Weave" };
@@ -2387,6 +2390,11 @@ public sealed class MainWindow : Window, IDisposable
                 var part = (LookStore.Part)_savePart;
                 if (LookStore.Save(_lookName, cfg, out var saveError, part))
                 {
+                    if (part == LookStore.Part.All)
+                    {
+                        _loadedSnapshot = LookStore.Capture(cfg);
+                        _editedSinceLoad = false;
+                    }
                     _status = part == LookStore.Part.All
                         ? $"Saved \u2018{trimmed}\u2019."
                         : $"Saved the {UiApplyPart[_savePart]} of \u2018{trimmed}\u2019 \u2014 loading it leaves everything else alone.";
@@ -2466,6 +2474,25 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.TextDisabled("Loaded:");
             ImGui.SameLine();
             ImGui.TextColored(AccentCol, _lookSel);
+            if (_editedSinceLoad)
+            {
+                ImGui.SameLine();
+                ImGui.TextDisabled("(edited)");
+                ImGui.SameLine();
+                if (ImGui.SmallButton("Revert##lookrevert"))
+                {
+                    if (LookStore.Load(_lookSel, cfg, LookStore.Part.All))
+                    {
+                        _dirty = true;
+                        _loadedSnapshot = LookStore.Capture(cfg);
+                        _editedSinceLoad = false;
+                        _status = $"Reverted to the saved \u2018{_lookSel}\u2019.";
+                    }
+                    else _status = $"Could not re-read \u2018{_lookSel}\u2019.";
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+                    "Throw away every change since this look was loaded.\nUndo still steps back from here.");
+            }
             ImGui.SameLine();
             float rightX = ImGui.GetContentRegionMax().X - 108f;
             if (rightX > ImGui.GetCursorPosX()) ImGui.SetCursorPosX(rightX);
@@ -2551,6 +2578,11 @@ public sealed class MainWindow : Window, IDisposable
                         return;
                     }
                     _dirty = true; _lookSel = n;
+                    if (part == LookStore.Part.All)
+                    {
+                        _loadedSnapshot = LookStore.Capture(cfg);
+                        _editedSinceLoad = false;
+                    }
                     _status = part == LookStore.Part.All
                         ? $"Loaded \u2018{n}\u2019."
                         : $"Loaded the {UiApplyPart[_applyPart].ToLowerInvariant()} from \u2018{n}\u2019.";
@@ -2626,6 +2658,8 @@ public sealed class MainWindow : Window, IDisposable
     private void PushUndo(PluginConfig cfg)
     {
         var now = LookStore.Capture(cfg);
+        _editedSinceLoad = _loadedSnapshot.Length > 0
+                           && !string.Equals(now, _loadedSnapshot, StringComparison.Ordinal);
         if (_baseline.Length == 0) { _baseline = now; return; }
         if (string.Equals(now, _baseline, StringComparison.Ordinal)) return;
         _undo.Add(_baseline);

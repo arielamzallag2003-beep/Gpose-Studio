@@ -88,7 +88,7 @@ public static partial class LookStore
         {
             if (!p.CanRead || !p.CanWrite || Exclude.Contains(p.Name)) continue;
             if (forSharing && NotShareable.Contains(p.Name)) continue;
-            if (part != Part.All && PartOf(p.Name) != part) continue;
+            if (part != Part.All && PartOf(p.Name) != part && !IsAlwaysCarried(p.Name)) continue;
             dict[p.Name] = p.GetValue(cfg);
         }
         return JsonSerializer.Serialize(dict, new JsonSerializerOptions { WriteIndented = true });
@@ -226,7 +226,7 @@ public static partial class LookStore
         foreach (var p in typeof(PluginConfig).GetProperties())
         {
             if (!p.CanWrite || Exclude.Contains(p.Name)) continue;
-            if (part != Part.All && PartOf(p.Name) != part) continue;
+            if (part != Part.All && PartOf(p.Name) != part && !IsAlwaysCarried(p.Name)) continue;
             if (!dict.TryGetValue(p.Name, out var el)) continue;
             try
             {
@@ -262,12 +262,16 @@ public static partial class LookStore
                 }
                 else if (p.PropertyType == typeof(List<TextMarker>))
                     p.SetValue(cfg, el.Deserialize<List<TextMarker>>() ?? new List<TextMarker>());
-                applied++;
+
+                if (part == Part.All || !IsAlwaysCarried(p.Name)) applied++;
             }
             catch {  }
         }
 
-        if (part == Part.All && !dict.ContainsKey("BgBPatColOverride")) cfg.CarryPatternIdentity();
+        if (part == Part.All
+            && dict.ContainsKey("PatColOverride")
+            && !dict.ContainsKey("BgBPatColOverride"))
+            cfg.CarryPatternIdentity();
         return true;
     }
 
@@ -323,23 +327,88 @@ public static partial class LookStore
     private const int BuiltinsVersion = 59;
     private static string MarkerPath => Path.Combine(FolderPath, ".builtins");
 
+    private static void RecordBuiltinHash(string name, string content)
+    {
+        try
+        {
+            var state = BuiltinGuard.Parse(File.Exists(MarkerPath) ? File.ReadAllText(MarkerPath) : null);
+            state.Hashes[name] = BuiltinGuard.Hash(content);
+            File.WriteAllText(MarkerPath, BuiltinGuard.Write(state));
+        }
+        catch {  }
+    }
+
     public static void SeedBuiltins()
     {
-        int have = 0;
-        try { if (File.Exists(MarkerPath)) int.TryParse(File.ReadAllText(MarkerPath).Trim(), out have); }
-        catch {  }
-        bool refresh = have < BuiltinsVersion;
+        BuiltinGuard.State state;
+        try { state = BuiltinGuard.Parse(File.Exists(MarkerPath) ? File.ReadAllText(MarkerPath) : null); }
+        catch { state = new BuiltinGuard.State(); }
+
+        bool refresh = state.Version < BuiltinsVersion;
+        int kept = 0;
 
         foreach (var (name, _, apply) in Builtins)
         {
-            if (!refresh && Exists(name)) continue;
+            bool present = Exists(name);
+            if (!refresh && present) continue;
+
+            string? current = null;
+            if (present)
+            {
+                try { if (TryResolve(name, out var p, out _)) current = File.ReadAllText(p); }
+                catch { current = null; }
+            }
+            state.Hashes.TryGetValue(name, out var recorded);
+            if (!BuiltinGuard.MayOverwrite(current, recorded))
+            {
+                kept++;
+                continue;
+            }
+
             var tmp = new PluginConfig();
             apply(tmp);
             tmp.CarryPatternIdentity();
-            if (!Save(name, tmp, out var err))
-                Services.Log.Warning($"could not seed built-in look '{name}': {err}");
+            var content = Capture(tmp);
+            if (SaveContent(name, content, out var err)) state.Hashes[name] = BuiltinGuard.Hash(content);
+            else Services.Log.Warning($"could not seed built-in look '{name}': {err}");
         }
-        if (refresh) { try { File.WriteAllText(MarkerPath, BuiltinsVersion.ToString()); } catch { } }
+
+        foreach (var (name, _, _) in Builtins)
+        {
+            if (state.Hashes.ContainsKey(name)) continue;
+            try
+            {
+                if (TryResolve(name, out var p, out _) && File.Exists(p))
+                    state.Hashes[name] = BuiltinGuard.Hash(File.ReadAllText(p));
+            }
+            catch {  }
+        }
+
+        if (refresh)
+        {
+            if (kept > 0)
+                Services.Log.Info($"kept {kept} built-in look(s) that had been edited; the rest were refreshed.");
+            state.Version = BuiltinsVersion;
+            try { File.WriteAllText(MarkerPath, BuiltinGuard.Write(state)); } catch { }
+        }
+    }
+
+    private static bool SaveContent(string name, string content, out string error)
+    {
+        if (!TryResolve(name, out var path, out error)) return false;
+        var tmp = path + ".tmp";
+        try
+        {
+            File.WriteAllText(tmp, content);
+            File.Move(tmp, path, overwrite: true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            error = $"Could not save the look: {ex.Message}";
+            return false;
+        }
     }
 
     public static void RegenerateBuiltin(string name)
@@ -350,8 +419,9 @@ public static partial class LookStore
                 var tmp = new PluginConfig();
                 apply(tmp);
                 tmp.CarryPatternIdentity();
-                if (!Save(name, tmp, out var err))
-                    Services.Log.Warning($"could not regenerate built-in look '{name}': {err}");
+                var content = Capture(tmp);
+                if (SaveContent(name, content, out var err)) RecordBuiltinHash(name, content);
+                else Services.Log.Warning($"could not regenerate built-in look '{name}': {err}");
                 return;
             }
     }

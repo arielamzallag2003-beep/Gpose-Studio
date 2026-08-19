@@ -88,6 +88,13 @@ public static partial class LookStore
         ("Elem", Part.Overlays), ("Frame", Part.Overlays),
     };
 
+    private static readonly HashSet<string> AlwaysCarried = new(StringComparer.Ordinal)
+    {
+        "ZoneNear", "ZoneNearSoft",
+    };
+
+    internal static bool IsAlwaysCarried(string name) => AlwaysCarried.Contains(name);
+
     internal static Part PartOf(string name)
     {
         if (Exact.TryGetValue(name, out var p)) return p;
