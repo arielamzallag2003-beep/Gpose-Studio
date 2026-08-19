@@ -8,7 +8,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>GPoseStudioPlugin</AssemblyName>
     <RootNamespace>GPoseStudio</RootNamespace>
-    <Version>0.8.0.1</Version>
+    <Version>0.8.1.0</Version>
 
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>

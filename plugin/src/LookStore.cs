@@ -81,13 +81,14 @@ public static partial class LookStore
 
     private static readonly HashSet<string> NotShareable = new() { "ElemImages" };
 
-    public static string Capture(PluginConfig cfg, bool forSharing = false)
+    public static string Capture(PluginConfig cfg, bool forSharing = false, Part part = Part.All)
     {
         var dict = new Dictionary<string, object?>();
         foreach (var p in typeof(PluginConfig).GetProperties())
         {
             if (!p.CanRead || !p.CanWrite || Exclude.Contains(p.Name)) continue;
             if (forSharing && NotShareable.Contains(p.Name)) continue;
+            if (part != Part.All && PartOf(p.Name) != part) continue;
             dict[p.Name] = p.GetValue(cfg);
         }
         return JsonSerializer.Serialize(dict, new JsonSerializerOptions { WriteIndented = true });
@@ -166,14 +167,14 @@ public static partial class LookStore
         return true;
     }
 
-    public static bool Save(string name, PluginConfig cfg, out string error)
+    public static bool Save(string name, PluginConfig cfg, out string error, Part part = Part.All)
     {
         if (!TryResolve(name, out var path, out error)) return false;
 
         var tmp = path + ".tmp";
         try
         {
-            File.WriteAllText(tmp, Capture(cfg));
+            File.WriteAllText(tmp, Capture(cfg, forSharing: false, part: part));
             File.Move(tmp, path, overwrite: true);
             return true;
         }
@@ -188,8 +189,11 @@ public static partial class LookStore
 
     public static bool Load(string name, PluginConfig cfg) => Load(name, cfg, Part.All);
 
-    public static bool Load(string name, PluginConfig cfg, Part part)
+    public static bool Load(string name, PluginConfig cfg, Part part) => Load(name, cfg, part, out _);
+
+    public static bool Load(string name, PluginConfig cfg, Part part, out int applied)
     {
+        applied = 0;
         if (!TryResolve(name, out var path, out _)) return false;
         try
         {
@@ -200,7 +204,7 @@ public static partial class LookStore
                 Services.Log.Warning($"LookStore.Load('{name}'): {info.Length} bytes exceeds the cap; refusing.");
                 return false;
             }
-            return Apply(File.ReadAllText(path), cfg, part);
+            return Apply(File.ReadAllText(path), cfg, part, out applied);
         }
         catch (Exception ex)
         {
@@ -209,8 +213,11 @@ public static partial class LookStore
         }
     }
 
-    public static bool Apply(string json, PluginConfig cfg, Part part)
+    public static bool Apply(string json, PluginConfig cfg, Part part) => Apply(json, cfg, part, out _);
+
+    public static bool Apply(string json, PluginConfig cfg, Part part, out int applied)
     {
+        applied = 0;
         Dictionary<string, JsonElement>? dict;
         try { dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, ReadOptions); }
         catch { return false; }
@@ -255,6 +262,7 @@ public static partial class LookStore
                 }
                 else if (p.PropertyType == typeof(List<TextMarker>))
                     p.SetValue(cfg, el.Deserialize<List<TextMarker>>() ?? new List<TextMarker>());
+                applied++;
             }
             catch {  }
         }

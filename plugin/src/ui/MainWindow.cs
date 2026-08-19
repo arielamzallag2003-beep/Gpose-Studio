@@ -26,6 +26,9 @@ public sealed class MainWindow : Window, IDisposable
     private string _baseline = "";
     private const int UndoDepth = 60;
     private int _applyPart;
+    private int _savePart;
+
+    private string _peekBackup = "";
 
     private static readonly string[] UiScopeModes = { "Both", "Foreground only", "Background only" };
     private static readonly string[] UiBases = { "Linear", "Radial", "Diamond", "Conic", "Mirror", "Spiral" };
@@ -1571,6 +1574,26 @@ public sealed class MainWindow : Window, IDisposable
         }
 
         using var id = ImRaii.PushId("uni2");
+
+        if (ImGui.Button("Copy first field \u2192 here"))
+        {
+            cfg.SaveBgBFrom(cfg);
+            _dirty = true;
+            _status = "Copied the first field into the second.";
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "Overwrite this field with the first one, then adjust from there.\nUndo puts it back.");
+        ImGui.SameLine();
+        if (ImGui.Button("Copy here \u2192 first field"))
+        {
+            cfg.LoadBgBInto(cfg);
+            _dirty = true;
+            _status = "Copied the second field into the first.";
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "Overwrite the FIRST field with this one. Undo puts it back.");
+        ImGui.Spacing();
+
         cfg.LoadBgBInto(_scratch);
         _scratch.BgStyle = 27;
 
@@ -2361,9 +2384,12 @@ public sealed class MainWindow : Window, IDisposable
         using (ImRaii.Disabled(!usable))
             if (ImGui.Button(exists ? "Overwrite" : "Save", new Vector2(84f, 0)))
             {
-                if (LookStore.Save(_lookName, cfg, out var saveError))
+                var part = (LookStore.Part)_savePart;
+                if (LookStore.Save(_lookName, cfg, out var saveError, part))
                 {
-                    _status = $"Saved \u2018{trimmed}\u2019.";
+                    _status = part == LookStore.Part.All
+                        ? $"Saved \u2018{trimmed}\u2019."
+                        : $"Saved the {UiApplyPart[_savePart]} of \u2018{trimmed}\u2019 \u2014 loading it leaves everything else alone.";
                     _lookList = LookStore.List();
                     _lookSel = trimmed;
                 }
@@ -2420,6 +2446,23 @@ public sealed class MainWindow : Window, IDisposable
         bool isBuiltin = has && cat.ContainsKey(_lookSel);
         if (has)
         {
+            using (ImRaii.Disabled(_dirty || _savePending))
+                ImGui.Button("Hold to preview", new Vector2(120f, 0));
+            bool holding = ImGui.IsItemActive() && !_dirty && !_savePending;
+            if (holding && _peekBackup.Length == 0)
+            {
+                _peekBackup = LookStore.Capture(cfg);
+                LookStore.Load(_lookSel, cfg, (LookStore.Part)_applyPart);
+            }
+            else if (!holding && _peekBackup.Length > 0)
+            {
+                LookStore.Apply(_peekBackup, cfg, LookStore.Part.All);
+                _peekBackup = "";
+            }
+            if (ImGui.IsItemHovered() && _peekBackup.Length == 0) ImGui.SetTooltip(
+                "Hold to see this look on the shot in front of you.\nRelease and it goes back. Nothing is saved either way.");
+            ImGui.SameLine();
+
             ImGui.TextDisabled("Loaded:");
             ImGui.SameLine();
             ImGui.TextColored(AccentCol, _lookSel);
@@ -2455,6 +2498,22 @@ public sealed class MainWindow : Window, IDisposable
         }
         else ImGui.TextDisabled("Click a look below to load it.");
 
+        ImGui.TextDisabled("Save writes");
+        ImGui.SameLine();
+        ImGui.PushItemWidth(170f);
+        if (ImGui.BeginCombo("##savepart", UiApplyPart[Math.Clamp(_savePart, 0, UiApplyPart.Length - 1)]))
+        {
+            for (int k = 0; k < UiApplyPart.Length; k++)
+                if (ImGui.Selectable(UiApplyPart[k], _savePart == k)) _savePart = k;
+            ImGui.EndCombo();
+        }
+        ImGui.PopItemWidth();
+        if (_savePart != 0)
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton("All##savereset")) _savePart = 0;
+        }
+
         ImGui.TextDisabled("Clicking a look applies");
         ImGui.SameLine();
         ImGui.PushItemWidth(170f);
@@ -2484,8 +2543,13 @@ public sealed class MainWindow : Window, IDisposable
             {
                 _confirmDelete = "";
                 var part = (LookStore.Part)_applyPart;
-                if (LookStore.Load(n, cfg, part))
+                if (LookStore.Load(n, cfg, part, out int applied))
                 {
+                    if (applied == 0)
+                    {
+                        _status = $"\u2018{n}\u2019 has nothing in the {UiApplyPart[_applyPart]} part.";
+                        return;
+                    }
                     _dirty = true; _lookSel = n;
                     _status = part == LookStore.Part.All
                         ? $"Loaded \u2018{n}\u2019."
