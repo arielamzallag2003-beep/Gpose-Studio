@@ -16,6 +16,8 @@ public class LookRoundTripTests
             GoboPattern = 2,
             FinalExposure = -0.25f,
             BgBPatColOverride = true,
+            MaskAMode = 1, MaskACx = 0.375f, MaskAInvert = true,
+            ZoneSkin = 2 | 8,
         };
         c.Elem[0] = 1.5f;
         c.Elem[^1] = 2.5f;
@@ -41,6 +43,10 @@ public class LookRoundTripTests
         Assert.Equal(src.GoboPattern, dst.GoboPattern);
         Assert.Equal(src.FinalExposure, dst.FinalExposure);
         Assert.Equal(src.BgBPatColOverride, dst.BgBPatColOverride);
+        Assert.Equal(src.MaskAMode, dst.MaskAMode);
+        Assert.Equal(src.MaskACx, dst.MaskACx);
+        Assert.Equal(src.MaskAInvert, dst.MaskAInvert);
+        Assert.Equal(2 | 8, dst.ZoneSkin);
 
         Assert.Equal(src.Elem, dst.Elem);
         Assert.Equal(src.FgField, dst.FgField);
@@ -133,6 +139,44 @@ public class LookRoundTripTests
         LookStore.Apply(light, dst, LookStore.Part.Camera, out int applied);
 
         Assert.Equal(0, applied);
+    }
+
+    [Fact]
+    public void APartialLoadLeavesTheMasksYouPlacedAlone()
+    {
+        var src = new PluginConfig { MaskAMode = 2, MaskACx = 0.9f, Exposure = 0.5f };
+        var grade = LookStore.Capture(src, forSharing: false, part: LookStore.Part.Grade);
+
+        Assert.DoesNotContain("MaskACx", grade);
+
+        var dst = new PluginConfig { MaskAMode = 1, MaskACx = 0.2f };
+        LookStore.Apply(grade, dst, LookStore.Part.Grade);
+
+        Assert.Equal(0.5f, dst.Exposure);
+        Assert.Equal(1, dst.MaskAMode);
+        Assert.Equal(0.2f, dst.MaskACx);
+    }
+
+    [Fact]
+    public void AFullLookCarriesItsMasks()
+    {
+        var src = new PluginConfig { MaskBMode = 3, MaskBCy = 0.7f, MaskBFeather = 0.02f };
+        var dst = new PluginConfig();
+
+        LookStore.Apply(LookStore.Capture(src), dst, LookStore.Part.All);
+
+        Assert.Equal(3, dst.MaskBMode);
+        Assert.Equal(0.7f, dst.MaskBCy);
+        Assert.Equal(0.02f, dst.MaskBFeather);
+    }
+
+    [Fact]
+    public void TheMaskViewModeIsNotPartOfALook()
+    {
+        var json = LookStore.Capture(new PluginConfig { DebugShowMask = true, MaskShowWhich = 3, PlacingMask = 2 });
+        Assert.DoesNotContain("DebugShowMask", json);
+        Assert.DoesNotContain("MaskShowWhich", json);
+        Assert.DoesNotContain("PlacingMask", json);
     }
 
     [Theory]

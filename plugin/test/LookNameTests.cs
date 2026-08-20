@@ -5,7 +5,7 @@ public class LookNameTests
 {
     [Theory]
     [InlineData("Dusk")]
-    [InlineData("Slow Burn")]
+    [InlineData("Evening Rain")]
     [InlineData("Tempe — The Red That Follows")]
     [InlineData("look_2")]
     public void OrdinaryNamesAreUsable(string name)

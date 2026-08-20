@@ -7,7 +7,7 @@ namespace GPoseStudio;
 
 public sealed class PluginConfig : IPluginConfiguration
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 4;
 
     public int Version { get; set; } = 1;
 
@@ -583,7 +583,15 @@ public sealed class PluginConfig : IPluginConfiguration
     public float GroundShadowW { get; set; } = 0.22f;
     public float GroundShadowH { get; set; } = 0.05f;
     public float AnimSpeed { get; set; } = 0f;
-    public const int ElemStride = 20;
+    public const int ElemStride = 24;
+
+    public const int ElemBlend = 20;
+    public const int ElemFlags = 21;
+    public const int ElemFeather = 22;
+    public const int ElemFlagFlipH = 1;
+    public const int ElemFlagFlipV = 2;
+    public const int ElemFitShift = 2;
+    public const int ElemMaskShift = 4;
     public float[] Elem { get; set; } = NewElems();
     private static float[] NewElems()
     {
@@ -877,6 +885,7 @@ public sealed class PluginConfig : IPluginConfiguration
     }
 
     public List<string> Pinned { get; set; } = new();
+    public List<string> PinnedLooks { get; set; } = new();
 
     public bool EnFrame { get; set; } = false;
     public float FrameCorner { get; set; } = 0.02f;
@@ -935,6 +944,67 @@ public sealed class PluginConfig : IPluginConfiguration
     public int ZoneSplitTone { get; set; } = 7;
     public int ZoneBleach { get; set; } = 7;
     public int ZoneGradMap { get; set; } = 7;
+    public int ZoneGrade { get; set; } = 7;
+    public int ZoneBgFill { get; set; } = 7;
+    public int ZoneBackdrop { get; set; } = 7;
+    public int ZoneFog { get; set; } = 7;
+    public int ZoneGlow { get; set; } = 7;
+    public int ZoneFinal { get; set; } = 7;
+
+    public int MaskAMode { get; set; } = 0;
+    public float MaskACx { get; set; } = 0.5f;
+    public float MaskACy { get; set; } = 0.45f;
+    public float MaskASize { get; set; } = 0.25f;
+    public float MaskAEllipse { get; set; } = 1.2f;
+    public float MaskAAngle { get; set; } = 0f;
+    public float MaskAFeather { get; set; } = 0.08f;
+    public bool MaskAInvert { get; set; } = false;
+    public int MaskBMode { get; set; } = 0;
+    public float MaskBCx { get; set; } = 0.5f;
+    public float MaskBCy { get; set; } = 0.5f;
+    public float MaskBSize { get; set; } = 0.25f;
+    public float MaskBEllipse { get; set; } = 1f;
+    public float MaskBAngle { get; set; } = 0f;
+    public float MaskBFeather { get; set; } = 0.12f;
+    public bool MaskBInvert { get; set; } = false;
+    public int MaskCMode { get; set; } = 0;
+    public float MaskCCx { get; set; } = 0.5f;
+    public float MaskCCy { get; set; } = 0.5f;
+    public float MaskCSize { get; set; } = 0.25f;
+    public float MaskCEllipse { get; set; } = 1f;
+    public float MaskCAngle { get; set; } = 0f;
+    public float MaskCFeather { get; set; } = 0.12f;
+    public bool MaskCInvert { get; set; } = false;
+
+    public int MaskMode(int i) => i == 0 ? MaskAMode : i == 1 ? MaskBMode : MaskCMode;
+    public float MaskCx(int i) => i == 0 ? MaskACx : i == 1 ? MaskBCx : MaskCCx;
+    public float MaskCy(int i) => i == 0 ? MaskACy : i == 1 ? MaskBCy : MaskCCy;
+    public float MaskSize(int i) => i == 0 ? MaskASize : i == 1 ? MaskBSize : MaskCSize;
+    public float MaskEllipse(int i) => i == 0 ? MaskAEllipse : i == 1 ? MaskBEllipse : MaskCEllipse;
+    public float MaskAngle(int i) => i == 0 ? MaskAAngle : i == 1 ? MaskBAngle : MaskCAngle;
+    public float MaskFeather(int i) => i == 0 ? MaskAFeather : i == 1 ? MaskBFeather : MaskCFeather;
+    public bool MaskInvert(int i) => i == 0 ? MaskAInvert : i == 1 ? MaskBInvert : MaskCInvert;
+
+    public void SetMaskMode(int i, int v) { if (i == 0) MaskAMode = v; else if (i == 1) MaskBMode = v; else MaskCMode = v; }
+    public void SetMaskCx(int i, float v) { if (i == 0) MaskACx = v; else if (i == 1) MaskBCx = v; else MaskCCx = v; }
+    public void SetMaskCy(int i, float v) { if (i == 0) MaskACy = v; else if (i == 1) MaskBCy = v; else MaskCCy = v; }
+    public void SetMaskSize(int i, float v) { if (i == 0) MaskASize = v; else if (i == 1) MaskBSize = v; else MaskCSize = v; }
+    public void SetMaskEllipse(int i, float v) { if (i == 0) MaskAEllipse = v; else if (i == 1) MaskBEllipse = v; else MaskCEllipse = v; }
+    public void SetMaskAngle(int i, float v) { if (i == 0) MaskAAngle = v; else if (i == 1) MaskBAngle = v; else MaskCAngle = v; }
+    public void SetMaskFeather(int i, float v) { if (i == 0) MaskAFeather = v; else if (i == 1) MaskBFeather = v; else MaskCFeather = v; }
+    public void SetMaskInvert(int i, bool v) { if (i == 0) MaskAInvert = v; else if (i == 1) MaskBInvert = v; else MaskCInvert = v; }
+
+    private static readonly System.Reflection.PropertyInfo[] ZoneProps =
+        System.Array.FindAll(typeof(PluginConfig).GetProperties(),
+            p => p.PropertyType == typeof(int) && p.Name.StartsWith("Zone", System.StringComparison.Ordinal));
+
+    public int MaskSubscribers(int i)
+    {
+        int bit = ZoneBits.MaskBit(i), n = 0;
+        foreach (var p in ZoneProps)
+            if ((((int?)p.GetValue(this) ?? 0) & bit) != 0) n++;
+        return n;
+    }
 
     public float RimSplit { get; set; } = 0f;
     public float RimSplitAngle { get; set; } = 0f;
@@ -1037,11 +1107,26 @@ public sealed class PluginConfig : IPluginConfiguration
     public int ParticleType { get; set; } = 0;
     public float ParticleAmount { get; set; } = 0f;
     public float ParticleSize { get; set; } = 0.5f;
+    public float ParticleSoft { get; set; } = 0.55f;
+    public float ParticleTumble { get; set; } = 0.65f;
+    public bool ParticleSolid { get; set; } = false;
+    public bool FreezeAnimation { get; set; } = false;
     public float ParticleFall { get; set; } = 0.5f;
     public float ParticleR { get; set; } = 1f;
     public float ParticleG { get; set; } = 0.6f;
     public float ParticleB { get; set; } = 0.7f;
     public int BokehShape { get; set; } = 0;
+    public float BokehDensity { get; set; } = 0.35f;
+    public float BokehRim { get; set; } = 0.55f;
+    public float BokehCatEye { get; set; } = 0.60f;
+    public float BokehThreshold { get; set; } = 0.52f;
+    public float BokehBlades { get; set; } = 6f;
+    public float BokehRotate { get; set; } = 0f;
+    public int BokehSource { get; set; } = 0;
+    public float BokehHueVar { get; set; } = 0.06f;
+    public float BokehR { get; set; } = 1f;
+    public float BokehG { get; set; } = 0.96f;
+    public float BokehB { get; set; } = 0.90f;
     public float BokehAmount { get; set; } = 0f;
     public void SetElem(int slot, int type, float x, float y, float w, float thick,
                         float r, float g, float bcol, float inten,
@@ -1053,6 +1138,7 @@ public sealed class PluginConfig : IPluginConfiguration
         Elem[i + 8] = r; Elem[i + 9] = g; Elem[i + 10] = bcol; Elem[i + 11] = inten;
         Elem[i + 12] = fill ? 1f : 0f; Elem[i + 13] = front ? 1f : 0f; Elem[i + 14] = sides; Elem[i + 15] = 0f;
         Elem[i + 16] = glow; Elem[i + 17] = 0f; Elem[i + 18] = 0f; Elem[i + 19] = 0f;
+        Elem[i + 20] = 0f; Elem[i + 21] = 0f; Elem[i + 22] = 0f; Elem[i + 23] = 0f;
     }
 
     public bool AnyElementAnimated()
@@ -1097,6 +1183,11 @@ public sealed class PluginConfig : IPluginConfiguration
     public bool DebugShowDepth { get; set; } = false;
     public bool DebugShowGate { get; set; } = false;
     public bool DebugShowClipping { get; set; } = false;
+    public bool DebugShowMask { get; set; } = false;
+    public int MaskShowWhich { get; set; } = 1;
+    public int PlacingMask { get; set; } = 0;
+    public int PlacingText { get; set; } = 0;
+    public bool LoadFromBase { get; set; } = false;
 
     public bool Bypass { get; set; } = false;
 
@@ -1131,6 +1222,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyCosmicPreset()
     {
+        ResetLook();
         EnBackdrop = true;
         BgStyle = 14;
         BgRecolor = 1f; BgRecolorStart = 0.06f;
@@ -1162,6 +1254,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyVoidPreset()
     {
+        ResetLook();
         EnBackdrop = true;
         BgStyle = 16;
         BgRecolor = 1f; BgRecolorStart = 0.05f;
@@ -1202,6 +1295,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyHorrorPreset()
     {
+        ResetLook();
         EnVhs = true;
         VhsStatic = 0.35f; VhsScan = 0.5f; VhsScanCount = 320f; VhsDropout = 0.4f;
         VhsRoll = 0.5f; VhsRollPos = 0.22f; VhsDesat = 0.7f; VhsVignette = 0.65f;
@@ -1223,6 +1317,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyHellfirePreset()
     {
+        ResetLook();
         EnBackdrop = true;
         BgStyle = 14;
         BgRecolor = 1f; BgRecolorStart = 0.05f;
@@ -1251,6 +1346,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyAquariumPreset()
     {
+        ResetLook();
         EnBackdrop = true;
         BgStyle = 17;
         BgRecolor = 1f; BgRecolorStart = 0.05f;
@@ -1275,6 +1371,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyAuroraPreset()
     {
+        ResetLook();
         EnBackdrop = true;
         BgStyle = 18;
         BgRecolor = 1f; BgRecolorStart = 0.05f;
@@ -1299,6 +1396,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplySynthwavePreset()
     {
+        ResetLook();
         EnBackdrop = true;
         BgStyle = 19;
         BgRecolor = 1f; BgRecolorStart = 0.05f;
@@ -1321,6 +1419,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyBloodMoonPreset()
     {
+        ResetLook();
         EnBackdrop = true;
         BgStyle = 20;
         BgRecolor = 1f; BgRecolorStart = 0.05f;
@@ -1343,6 +1442,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyTempeMoonPreset()
     {
+        ResetLook();
         EnBackdrop = true;
         BgStyle = 21;
         BgRecolor = 1f; BgRecolorStart = 0.05f;
@@ -1369,6 +1469,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyForgePreset()
     {
+        ResetLook();
         EnBackdrop = true;
         BgStyle = 22;
         BgRecolor = 1f; BgRecolorStart = 0.05f;
@@ -1395,6 +1496,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyArtisanPreset()
     {
+        ResetLook();
         EnBackdrop = true;
         BgStyle = 23;
         BgRecolor = 1f; BgRecolorStart = 0.05f;
@@ -1418,6 +1520,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplySunsetPreset()
     {
+        ResetLook();
         EnBackdrop = true;
         BgStyle = 24;
         BgRecolor = 1f; BgRecolorStart = 0.05f;
@@ -1442,6 +1545,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplySinEaterPreset()
     {
+        ResetLook();
         EnBackdrop = true;
         BgStyle = 25;
         BgRecolor = 1f; BgRecolorStart = 0.05f;
@@ -1470,6 +1574,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyMagitekHudPreset()
     {
+        ResetLook();
         EnBackdrop = false; BgStyle = 0; BgRecolor = 0f;
         EnHud = true;
         HudIntensity = 1f;
@@ -1490,6 +1595,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyGposeViewfinderPreset()
     {
+        ResetLook();
         EnBackdrop = false; BgStyle = 0; BgRecolor = 0f;
         EnHud = false;
         EnElements = true;
@@ -1506,6 +1612,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyAoeTelegraphPreset()
     {
+        ResetLook();
         EnBackdrop = false; BgStyle = 0; BgRecolor = 0f;
         EnHud = false;
         EnElements = true;
@@ -1515,6 +1622,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyAetherbloomPreset()
     {
+        ResetLook();
         EnBackdrop = false; BgRecolor = 0f; BgStyle = 0; BgBStyle = 0;
         EnBgFill = false; BgFill = 0f;
         EnForegroundOn = false;
@@ -1566,6 +1674,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyTempestPreset()
     {
+        ResetLook();
         BgStyle = 27; BgFbm = 4f; BgScale = 5f; BgScaleY = 5f; BgSharp = 0f;
         UnivBase = 0; UnivNoise = 5; UnivBlend = 5; UnivNoiseAmt = 0.35f; UnivNoiseScale = 0.30f;
         UnivWarp = 0.55f; UnivDetail = 0.5f; UnivParticle = 0; UnivOrb = 0; UnivGround = 0; UnivHorizon = 0f;
@@ -1658,6 +1767,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyHoarfrostPreset()
     {
+        ResetLook();
         BgStyle = 27; BgFbm = 4f; BgScale = 5f; BgScaleY = 5f; BgSharp = 0f;
         UnivBase = 1; UnivNoise = 1; UnivBlend = 5; UnivNoiseAmt = 0.30f; UnivNoiseScale = 0.5f;
         UnivWarp = 0.35f; UnivDetail = 0.5f; UnivParticle = 0; UnivOrb = 0; UnivGround = 0; UnivHorizon = 0f;
@@ -1755,6 +1865,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyEmberfallPreset()
     {
+        ResetLook();
         BgStyle = 27; BgFbm = 5f; BgScale = 4f; BgScaleY = 4f; BgSharp = 0f;
         UnivBase = 0; UnivNoise = 4; UnivBlend = 5; UnivNoiseAmt = 0.40f; UnivNoiseScale = 0.35f;
         UnivWarp = 0.45f; UnivDetail = 0.55f; UnivParticle = 0; UnivOrb = 0; UnivGround = 0; UnivHorizon = 0f;
@@ -1851,8 +1962,437 @@ public sealed class PluginConfig : IPluginConfiguration
         AnimSpeed = 0f;
     }
 
+    private void SeedPortraitMask()
+    {
+        MaskAMode = 1;
+        MaskACx = 0.5f; MaskACy = 0.34f;
+        MaskASize = 0.17f; MaskAEllipse = 1.30f;
+        MaskAAngle = 0f; MaskAFeather = 0.10f;
+        MaskAInvert = false;
+        MaskBMode = 0; MaskCMode = 0;
+    }
+
+    public void ApplyStudioGreyPreset()
+    {
+        ResetLook();
+        ApplyStudioPortraitPreset();
+        SeedPortraitMask();
+
+        EnFinalGrade = true;
+        FinalExposure = 0.015f; FinalContrast = 0.035f; FinalSat = 0.02f;
+        FinalTemp = 0.012f; FinalLift = 0.006f; FinalGamma = 0.004f; FinalGain = -0.006f;
+
+        EnGround = true; GroundMode = 1; GroundShadow = 0.26f;
+        GroundLevel = 0.80f; GroundCastAngle = 1.9f; GroundCastLen = 0.28f;
+    }
+
+    public void ApplyWindowLightPreset()
+    {
+        ResetLook();
+        ApplyOnLocationPreset();
+        SeedPortraitMask();
+
+        EnGobo = true; GoboPattern = 1; GoboAmount = 0.30f;
+        GoboScale = 1.35f; GoboAngle = 0.22f; GoboSoft = 0.62f;
+        ZoneGobo = 6;
+
+        MaskBMode = 2;
+        MaskBCx = 0.52f; MaskBCy = 0.5f;
+        MaskBAngle = 0f;
+        MaskBFeather = 0.26f;
+        MaskBInvert = false;
+
+        EnSkin = true; SkinWarmth = 0.26f; SkinFlush = 0.10f;
+        EnGlow = true; BloomAmount = 0.14f; BloomThreshold = 0.78f; BloomRadius = 3.2f;
+        Halation = 0.09f; HalationR = 1f; HalationG = 0.87f; HalationB = 0.72f;
+        Orton = 0.05f;
+        ZoneGlow = 7 | ZoneBits.MaskBit(1);
+
+        EnSplitTone = true; StAmount = 0.18f; StBalance = 0.48f;
+        StShadowR = 0.44f; StShadowG = 0.48f; StShadowB = 0.58f;
+        StHighR = 0.56f; StHighG = 0.52f; StHighB = 0.45f;
+
+        EnBeauty = true; BeautyAmount = 0.14f; BeautyRadius = 0.85f; BeautyGlow = 0.22f;
+        EnShadow = true; ShadowAmount = 0.22f; ShadowSpread = 0.42f;
+        ShadowOffsetX = -0.18f; ShadowOffsetY = -0.06f;
+        ShadowSoftness = 0.80f; ShadowContact = 0.30f; ShadowDepth = 0.12f;
+        ShadowR = 0.22f; ShadowG = 0.24f; ShadowB = 0.30f;
+
+        EnFinalGrade = true;
+        FinalExposure = 0.02f; FinalContrast = 0.04f; FinalSat = 0.03f;
+        FinalTemp = 0.02f; FinalLift = 0.012f; FinalGamma = 0.008f; FinalGain = -0.008f;
+    }
+
+    public void ApplyLowKeyPreset()
+    {
+        ResetLook();
+        SeedPortraitMask();
+
+        EnBackdrop = false; BgRecolor = 0f; BgStyle = 0;
+        EnBgFill = true; BgFill = 1f;
+        BgFillR = 0.008f; BgFillG = 0.008f; BgFillB = 0.011f;
+        BgFillStart = 0.05f; BgFillFeather = 0.014f;
+
+        EnEdge = true; EdgeErode = 0.62f; EdgeDespill = 0.70f;
+        EdgeWrap = 0.10f; EdgeWrapWidth = 0.22f;
+
+        EnSpot = true; SpotAmount = 0.62f;
+        SpotX = 0.38f; SpotY = 0.62f;
+        SpotRadius = 0.42f; SpotEllipse = 1.15f; SpotSoft = 0.34f;
+        SpotAngle = 0.18f; SpotWarm = 0.30f;
+        ZoneSpot = 2;
+
+        EnBacklight = true; BacklightAmount = 0.34f; BacklightWidth = 1.9f;
+        BacklightR = 0.86f; BacklightG = 0.83f; BacklightB = 0.78f;
+        ZoneBacklight = 2;
+        EnRim = true; RimStrength = 0.06f; RimWidth = 2f; SubjectPop = 0.12f;
+        RimSplit = 0f;
+
+        EnSkin = true; SkinWarmth = 0.18f; SkinFlush = 0.07f;
+        EnBeauty = true; BeautyAmount = 0.16f; BeautyRadius = 0.9f; BeautyGlow = 0.20f;
+
+        EnGlow = true; BloomAmount = 0.16f; BloomThreshold = 0.88f; BloomRadius = 3.4f;
+        Halation = 0.10f; HalationR = 1f; HalationG = 0.84f; HalationB = 0.68f;
+        Orton = 0f; GodrayAmount = 0f; AnamAmount = 0f;
+
+        Exposure = -0.04f; Contrast = 0.16f; Saturation = -0.04f; Vibrance = 0.10f;
+        Temperature = 0.03f; Tint = 0.01f;
+        Lift = -0.012f; Gamma = -0.020f; Gain = 0.010f;
+        BlackPoint = 0.014f; WhitePoint = 1.04f;
+
+        EnLens = true;
+        FilmRolloff = 0.66f; FilmSat = 0.42f; FilmToe = 0.30f;
+        LensVig = 0.30f; LensCornerSoft = 0.14f;
+        Vignette = 0.14f; Grain = 0.09f; Chroma = 0.02f; ChromaRadial = 0.9f;
+        Sharpen = 0.16f; Clarity = 0.16f;
+
+        EnFinalGrade = true;
+        FinalExposure = -0.02f; FinalContrast = 0.06f; FinalSat = 0f;
+        FinalTemp = 0.015f; FinalLift = -0.004f; FinalGamma = -0.006f; FinalGain = 0.004f;
+    }
+
+    public void ApplyHighKeyPreset()
+    {
+        ResetLook();
+        SeedPortraitMask();
+
+        EnBackdrop = false; BgRecolor = 0f; BgStyle = 0;
+        EnBgFill = true; BgFill = 1f;
+        BgFillR = 0.955f; BgFillG = 0.958f; BgFillB = 0.965f;
+        BgFillStart = 0.05f; BgFillFeather = 0.016f;
+
+        EnEdge = true; EdgeErode = 0.72f; EdgeDespill = 0.55f;
+        EnEdgeWrapSafe();
+
+        EnShadow = true; ShadowAmount = 0.20f; ShadowSpread = 0.50f;
+        ShadowOffsetX = 0.14f; ShadowOffsetY = -0.05f;
+        ShadowSoftness = 0.88f; ShadowContact = 0.26f; ShadowDepth = 0.10f;
+        ShadowR = 0.74f; ShadowG = 0.745f; ShadowB = 0.765f;
+        EnGround = true; GroundMode = 1; GroundShadow = 0.16f;
+        GroundLevel = 0.82f; GroundCastAngle = 1.9f; GroundCastLen = 0.22f;
+
+        EnBacklight = false; BacklightAmount = 0f;
+        EnRim = true; RimStrength = 0f; SubjectPop = 0.10f;
+        EnSpot = false; EnGobo = false;
+
+        EnSkin = true; SkinWarmth = 0.20f; SkinFlush = 0.11f;
+        EnBeauty = true; BeautyAmount = 0.22f; BeautyRadius = 0.95f; BeautyGlow = 0.30f;
+
+        EnGlow = true; BloomAmount = 0.10f; BloomThreshold = 0.92f; BloomRadius = 2.8f;
+        Halation = 0.05f; HalationR = 1f; HalationG = 0.90f; HalationB = 0.82f;
+        Orton = 0.06f;
+
+        Exposure = 0.05f; Contrast = -0.05f; Saturation = 0f; Vibrance = 0.16f;
+        Temperature = 0.02f; Tint = 0.01f;
+        Lift = 0.040f; Gamma = 0.030f; Gain = -0.030f;
+        BlackPoint = 0f; WhitePoint = 1.10f;
+
+        EnLens = true;
+        FilmRolloff = 0.62f; FilmSat = 0.30f; FilmToe = 0.08f;
+        LensVig = 0.06f; LensCornerSoft = 0.16f;
+        Vignette = 0.02f; Grain = 0.05f; Chroma = 0.02f; ChromaRadial = 0.85f;
+        Sharpen = 0.14f; Clarity = 0.10f;
+
+        EnFinalGrade = true;
+        FinalExposure = 0.02f; FinalContrast = -0.02f; FinalSat = 0.02f;
+        FinalTemp = 0.010f; FinalLift = 0.010f; FinalGamma = 0.008f; FinalGain = -0.012f;
+    }
+
+    private void EnEdgeWrapSafe() { EdgeWrap = 0.26f; EdgeWrapWidth = 0.24f; }
+
+    private void SitTheSubjectInIt(float shadow, float ground, float wrap)
+    {
+        EnEdge = true;
+        EdgeErode = 0.55f; EdgeDespill = 0.62f;
+        EdgeWrap = wrap; EdgeWrapWidth = 0.28f;
+
+        if (shadow > 0f)
+        {
+            EnShadow = true; ShadowAmount = shadow; ShadowSpread = 0.40f;
+            ShadowOffsetX = 0.15f; ShadowOffsetY = -0.08f;
+            ShadowSoftness = 0.76f; ShadowContact = 0.32f; ShadowDepth = 0.11f;
+        }
+        if (ground > 0f)
+        {
+            EnGround = true; GroundMode = 1;
+            GroundShadow = ground; GroundLevel = 0.80f;
+            GroundCastAngle = 1.9f; GroundCastLen = 0.26f;
+        }
+    }
+
+    private void FinishAsOnePicture(float exp, float con, float sat, float temp)
+    {
+        EnFinalGrade = true;
+        FinalExposure = exp; FinalContrast = con; FinalSat = sat; FinalTemp = temp;
+        FinalLift = 0.006f; FinalGamma = 0.004f; FinalGain = -0.006f;
+    }
+
+    public void ApplyAnamorphicPreset()
+    {
+        ResetLook();
+        ApplyOnLocationPreset();
+        SeedPortraitMask();
+
+        EnGlow = true;
+        AnamAmount = 0.34f; AnamR = 0.42f; AnamG = 0.62f; AnamB = 1.0f;
+        BloomAmount = 0.16f; BloomThreshold = 0.80f; BloomRadius = 3.4f;
+        Halation = 0.12f; HalationR = 1f; HalationG = 0.82f; HalationB = 0.66f;
+        Orton = 0.04f;
+
+        EnLens = true;
+        Letterbox = 0.115f;
+        FilmRolloff = 0.72f; FilmSat = 0.46f; FilmToe = 0.26f;
+        LensVig = 0.28f; LensCornerSoft = 0.20f;
+        Vignette = 0.10f; Grain = 0.10f; Chroma = 0.05f; ChromaRadial = 0.92f;
+        Sharpen = 0.12f; Clarity = 0.10f;
+
+        EnTealOrange = true; TealOrange = 0.20f; TealOrangePunch = 0.30f;
+        Contrast = 0.10f; Saturation = -0.02f; Vibrance = 0.12f;
+
+        FinishAsOnePicture(0.01f, 0.05f, 0.01f, 0.008f);
+    }
+
+    public void ApplyNightNoirPreset()
+    {
+        ResetLook();
+        ApplyOnLocationPreset();
+        SeedPortraitMask();
+
+        EnGobo = true; GoboPattern = 0; GoboAmount = 0.34f;
+        GoboScale = 1.9f; GoboAngle = 0.34f; GoboSoft = 0.24f;
+        ZoneGobo = 6;
+
+        EnSpot = true; SpotAmount = 0.44f;
+        SpotX = 0.40f; SpotY = 0.60f; SpotRadius = 0.52f;
+        SpotEllipse = 1.25f; SpotSoft = 0.40f; SpotAngle = 0.14f; SpotWarm = 0.12f;
+
+        EnRim = true; RimStrength = 0.14f; RimWidth = 2f; SubjectPop = 0.14f;
+        RimR = 0.86f; RimG = 0.90f; RimB = 1.0f;
+
+        Exposure = -0.10f; Contrast = 0.24f; Saturation = -0.18f; Vibrance = 0.10f;
+        Temperature = -0.03f; Tint = 0.01f;
+        Lift = -0.016f; Gamma = -0.026f; Gain = 0.012f;
+        BlackPoint = 0.018f; WhitePoint = 1.02f;
+
+        EnSplitTone = true; StAmount = 0.24f; StBalance = 0.44f;
+        StShadowR = 0.40f; StShadowG = 0.46f; StShadowB = 0.60f;
+        StHighR = 0.56f; StHighG = 0.53f; StHighB = 0.46f;
+
+        EnLens = true;
+        FilmRolloff = 0.70f; FilmSat = 0.44f; FilmToe = 0.34f;
+        LensVig = 0.36f; LensCornerSoft = 0.16f;
+        Vignette = 0.18f; Grain = 0.14f; Chroma = 0.03f; ChromaRadial = 0.9f;
+        Sharpen = 0.20f; Clarity = 0.20f;
+
+        EnGlow = true; BloomAmount = 0.20f; BloomThreshold = 0.86f; BloomRadius = 3.6f;
+        Halation = 0.14f; HalationR = 1f; HalationG = 0.80f; HalationB = 0.62f;
+
+        FinishAsOnePicture(-0.02f, 0.07f, -0.02f, -0.008f);
+    }
+
+    public void ApplyGoldenHourPreset()
+    {
+        ResetLook();
+        ApplyOnLocationPreset();
+        SeedPortraitMask();
+
+        MaskBMode = 2;
+        MaskBCx = 0.46f; MaskBCy = 0.5f; MaskBAngle = 3.1416f;
+        MaskBFeather = 0.30f; MaskBInvert = false;
+
+        EnGlow = true;
+        BloomAmount = 0.22f; BloomThreshold = 0.74f; BloomRadius = 4.0f;
+        Halation = 0.18f; HalationR = 1f; HalationG = 0.78f; HalationB = 0.54f;
+        GodrayAmount = 0.18f; GodrayR = 1f; GodrayG = 0.82f; GodrayB = 0.58f;
+        Orton = 0.10f; AnamAmount = 0f;
+
+        WashAmount = 0.09f; WashX = 0.88f; WashY = 0.84f;
+        WashR = 1f; WashG = 0.80f; WashB = 0.52f;
+
+        EnFog = false; FogStrength = 0f;
+
+        EnSkin = true; SkinWarmth = 0.24f; SkinFlush = 0.10f;
+        EnBeauty = true; BeautyAmount = 0.12f; BeautyRadius = 0.85f; BeautyGlow = 0.26f;
+
+        Exposure = 0.08f; Contrast = 0.04f; Saturation = 0.02f; Vibrance = 0.18f;
+        Temperature = 0.10f; Tint = 0.02f;
+        Lift = 0.030f; Gamma = 0.024f; Gain = -0.014f;
+        BlackPoint = 0.002f; WhitePoint = 1.08f;
+
+        EnLens = true;
+        FilmRolloff = 0.62f; FilmSat = 0.40f; FilmToe = 0.16f;
+        LensVig = 0.20f; LensCornerSoft = 0.14f;
+        Vignette = 0.07f; Grain = 0.07f; Chroma = 0.04f; ChromaRadial = 0.88f;
+        LeakAmt = 0.10f;
+        Sharpen = 0.14f; Clarity = 0.10f;
+
+        FinishAsOnePicture(0.02f, 0.03f, 0.02f, 0.020f);
+    }
+
+    public void ApplyDeepFieldPreset()
+    {
+        ResetLook();
+        ApplyCosmicPreset();
+        SeedPortraitMask();
+        BgRecolorStart = 0.055f; BgRecolorFeather = 0.018f;
+        SitTheSubjectInIt(shadow: 0.20f, ground: 0f, wrap: 0.30f);
+        EnSkin = true; SkinWarmth = 0.14f; SkinFlush = 0.05f;
+        EnBeauty = true; BeautyAmount = 0.12f; BeautyRadius = 0.85f; BeautyGlow = 0.22f;
+        FinishAsOnePicture(0.01f, 0.05f, 0.02f, -0.006f);
+    }
+
+    public void ApplyTheVoidPreset()
+    {
+        ResetLook();
+        ApplyVoidPreset();
+        SeedPortraitMask();
+        BgRecolorStart = 0.055f; BgRecolorFeather = 0.016f;
+        SitTheSubjectInIt(shadow: 0.16f, ground: 0f, wrap: 0.20f);
+        EnSkin = true; SkinWarmth = 0.10f; SkinFlush = 0.04f;
+        EnBeauty = true; BeautyAmount = 0.14f; BeautyRadius = 0.9f; BeautyGlow = 0.24f;
+        FinishAsOnePicture(-0.01f, 0.06f, -0.02f, -0.010f);
+    }
+
+    public void ApplySumiPreset()
+    {
+        ResetLook();
+        ApplyChineseInkPreset();
+        SeedPortraitMask();
+        BgRecolorStart = 0.055f; BgRecolorFeather = 0.020f;
+        SitTheSubjectInIt(shadow: 0.14f, ground: 0.20f, wrap: 0.06f);
+        FinishAsOnePicture(0.01f, 0.04f, -0.04f, 0.004f);
+    }
+
+    public void ApplySnowfallPreset()
+    {
+        ResetLook();
+        ApplyHoarfrostPreset();
+        SeedPortraitMask();
+
+        BgRecolor = 0.70f;
+        FgOpacity = 0.34f;
+        FgPlaceSize = 0.26f; FgPlaceSoft = 0.44f;
+
+        SitTheSubjectInIt(shadow: 0.16f, ground: 0.14f, wrap: 0.24f);
+        EnSkin = true; SkinWarmth = 0.20f; SkinFlush = 0.12f;
+        FinishAsOnePicture(0.015f, 0.04f, 0f, -0.014f);
+    }
+
+    public void ApplyAshfallPreset()
+    {
+        ResetLook();
+        ApplyOnLocationPreset();
+        SeedPortraitMask();
+
+        EnParticles = true;
+        ParticleType = 0;
+        ParticleAmount = 0.42f; ParticleSize = 0.62f; ParticleFall = 0.34f;
+        ParticleR = 0.72f; ParticleG = 0.66f; ParticleB = 0.60f;
+        ParticleSolid = true;
+        ParticleSoft = 0.68f;
+        ParticleTumble = 0.80f;
+        BokehAmount = 0f;
+        ZoneBokeh = 7;
+
+        EnFog = true; FogStrength = 0.16f; FogStart = 0.10f;
+        FogColorR = 0.40f; FogColorG = 0.35f; FogColorB = 0.32f;
+
+        WashAmount = 0.13f; WashX = 0.18f; WashY = 0.24f;
+        WashR = 1f; WashG = 0.62f; WashB = 0.30f;
+
+        EnForegroundOn = true;
+        FgPlaceMode = 1;
+        FgPlaceSize = 0.30f; FgPlaceSoft = 0.50f;
+        FgOpacity = 0.26f; FgBlendMode = 3; FgDepthGate = 0;
+        FgSeamMode = 3; FgSeamFeather = 0.28f; FgSeamMatch = 0.25f;
+        FgSeamMix = 2; FgSeamMixLevel = 0.45f;
+
+        BgStyle = 27;
+        UnivBase = 0; UnivNoise = 5; UnivNoiseAmt = 0.55f; UnivNoiseScale = 0.20f;
+        UnivWarp = 0.80f; UnivDetail = 0.40f; UnivPattern = 0; UnivPatStrength = 0f;
+        UnivParticle = 0; UnivOrb = 0; UnivGround = 0; UnivHorizon = 0f;
+        BgFlow = 0.18f; BgNebContrast = 0.18f; BgHaze = 0.06f; BgGlow = 0.05f;
+        BgTopR = 0.26f; BgTopG = 0.22f; BgTopB = 0.20f;
+        BgCol5R = 0.18f; BgCol5G = 0.15f; BgCol5B = 0.14f;
+        BgMidR = 0.11f; BgMidG = 0.09f; BgMidB = 0.09f;
+        BgCol6R = 0.06f; BgCol6G = 0.05f; BgCol6B = 0.05f;
+        BgBotR = 0.03f; BgBotG = 0.03f; BgBotB = 0.03f;
+        BgCol4R = 0.42f; BgCol4G = 0.30f; BgCol4B = 0.22f;
+        CopyFgFromScratch(this, 0);
+        BgFlow = 0.24f; UnivNoiseScale = 0.14f; UnivWarp = 0.62f;
+        CopyFgFromScratch(this, 1);
+        SetFgBActive(true);
+
+        EnBackdrop = false; BgRecolor = 0f; BgStyle = 0; BgBStyle = 0;
+        EnBgFill = false; BgFill = 0f;
+
+        SitTheSubjectInIt(shadow: 0f, ground: 0f, wrap: 0f);
+        EnEdge = false;
+
+        Exposure = -0.06f; Contrast = 0.06f; Saturation = -0.20f; Vibrance = 0.10f;
+        Temperature = 0.04f; Tint = 0.01f;
+        Lift = 0.020f; Gamma = 0.010f; Gain = -0.014f;
+        BlackPoint = 0.006f; WhitePoint = 1.04f;
+
+        EnSkin = true; SkinWarmth = 0.20f; SkinFlush = 0.07f;
+        EnBeauty = true; BeautyAmount = 0.10f; BeautyRadius = 0.85f; BeautyGlow = 0.20f;
+
+        EnGlow = true; BloomAmount = 0.14f; BloomThreshold = 0.82f; BloomRadius = 3.4f;
+        Halation = 0.11f; HalationR = 1f; HalationG = 0.78f; HalationB = 0.58f;
+        Orton = 0.06f; GodrayAmount = 0f; AnamAmount = 0f;
+
+        EnLens = true;
+        FilmRolloff = 0.62f; FilmSat = 0.40f; FilmToe = 0.22f;
+        LensVig = 0.26f; LensCornerSoft = 0.16f;
+        Vignette = 0.10f; Grain = 0.13f; Chroma = 0.03f; ChromaRadial = 0.88f;
+        Sharpen = 0.14f; Clarity = 0.12f;
+
+        FinishAsOnePicture(-0.01f, 0.04f, -0.03f, 0.014f);
+    }
+
+    public void ApplyNeonDrivePreset()
+    {
+        ResetLook();
+        ApplySynthwavePreset();
+        SeedPortraitMask();
+        BgRecolorStart = 0.055f; BgRecolorFeather = 0.018f;
+        SitTheSubjectInIt(shadow: 0.14f, ground: 0.18f, wrap: 0.34f);
+        FinishAsOnePicture(0.01f, 0.06f, 0.04f, 0f);
+    }
+
+    public void ApplyLostSignalPreset()
+    {
+        ResetLook();
+        ApplyHorrorPreset();
+        SeedPortraitMask();
+        EnEdge = true; EdgeErode = 0.40f; EdgeDespill = 0.50f;
+        EdgeWrap = 0f; EdgeWrapWidth = 0.2f;
+        FinishAsOnePicture(-0.02f, 0.08f, -0.06f, -0.012f);
+    }
+
     public void ApplyStudioPortraitPreset()
     {
+        ResetLook();
         EnBackdrop = true; BgStyle = 26; BgRecolor = 1f;
         BgRecolorStart = 0.06f; BgRecolorFeather = 0.02f;
         BgGradType = 1; BgPatMode = 0;
@@ -1910,6 +2450,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyStarlitVowPreset()
     {
+        ResetLook();
         EnBackdrop = true; BgStyle = 27; BgRecolor = 1f;
         BgRecolorStart = 0.06f; BgRecolorFeather = 0.02f;
         UnivBase = 1;
@@ -1969,6 +2510,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyDualityPreset()
     {
+        ResetLook();
         EnBackdrop = true; BgStyle = 27; BgRecolor = 1f;
         BgRecolorStart = 0.06f; BgRecolorFeather = 0.02f;
         BgKeepVfx = 0f;
@@ -2040,6 +2582,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyOnLocationPreset()
     {
+        ResetLook();
         EnBackdrop = false; BgRecolor = 0f; BgStyle = 0; BgBStyle = 0;
         EnBgFill = false; BgFill = 0f;
         EnForegroundOn = false;
@@ -2087,6 +2630,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyChineseInkPreset()
     {
+        ResetLook();
         EnBackdrop = true; BgStyle = 29; BgRecolor = 1f; BgRecolorStart = 0.05f;
         BgTopR = 0.92f; BgTopG = 0.89f; BgTopB = 0.82f;
         BgBotR = 0.06f; BgBotG = 0.06f; BgBotB = 0.07f;
@@ -2122,6 +2666,7 @@ public sealed class PluginConfig : IPluginConfiguration
 
     public void ApplyEvercoldPreset()
     {
+        ResetLook();
         EnBackdrop = true; BgStyle = 28; BgRecolor = 1f; BgRecolorStart = 0.05f;
         BgTopR = 0.04f; BgTopG = 0.10f; BgTopB = 0.24f;
         BgCol5R = 0.07f; BgCol5G = 0.22f; BgCol5B = 0.44f;
@@ -2202,6 +2747,7 @@ public sealed class PluginConfig : IPluginConfiguration
         {
             MigrateElem();
             MigrateFg();
+            MigrateTextSize();
         }
         catch (Exception ex)
         {
@@ -2257,12 +2803,56 @@ public sealed class PluginConfig : IPluginConfiguration
         }
     }
 
+    internal const float LegacyTextReferenceHeight = 1080f;
+
+    internal void MigrateTextSize()
+    {
+        if (Texts == null) return;
+        foreach (var t in Texts)
+            if (t != null && t.Size > 1f) t.Size = t.Size / LegacyTextReferenceHeight;
+    }
+
     private void MigrateElem()
     {
-        if (Elem != null && Elem.Length == 8 * ElemStride) return;
-        Elem = PackedArray.Widen(Elem?.Length == 128 ? Elem : null,
-                                 length: 8 * ElemStride, blocks: 8,
-                                 oldStride: 16, newStride: ElemStride, copyPerBlock: 16);
+        int want = 8 * ElemStride;
+        if (Elem != null && Elem.Length == want) return;
+        int have = Elem?.Length ?? 0;
+        int old = have == 128 ? 16 : (have == 160 ? 20 : 0);
+        Elem = PackedArray.Widen(old > 0 ? Elem : null,
+                                 length: want, blocks: 8,
+                                 oldStride: old > 0 ? old : ElemStride,
+                                 newStride: ElemStride, copyPerBlock: old > 0 ? old : 0);
+    }
+
+    public int ElemFlagsOf(int slot) => (int)(Elem[slot * ElemStride + ElemFlags] + 0.5f);
+    public void SetElemFlags(int slot, int v) => Elem[slot * ElemStride + ElemFlags] = v;
+
+    public bool ElemFlag(int slot, int bit) => (ElemFlagsOf(slot) & bit) != 0;
+    public void SetElemFlag(int slot, int bit, bool on)
+        => SetElemFlags(slot, on ? (ElemFlagsOf(slot) | bit) : (ElemFlagsOf(slot) & ~bit));
+
+    public int ElemFit(int slot) => (ElemFlagsOf(slot) >> ElemFitShift) & 3;
+    public void SetElemFit(int slot, int fit)
+        => SetElemFlags(slot, (ElemFlagsOf(slot) & ~(3 << ElemFitShift)) | ((fit & 3) << ElemFitShift));
+
+    public int ElemMasks(int slot) => ((ElemFlagsOf(slot) >> ElemMaskShift) & 7) << 3;
+    public void SetElemMasks(int slot, int zoneBits)
+        => SetElemFlags(slot, (ElemFlagsOf(slot) & ~(7 << ElemMaskShift))
+                            | ((ZoneBits.MaskPart(zoneBits) >> 3) << ElemMaskShift));
+
+    public void CopyElemSlot(int from, int to)
+    {
+        if (from == to || from < 0 || to < 0 || from >= 8 || to >= 8) return;
+        Array.Copy(Elem, from * ElemStride, Elem, to * ElemStride, ElemStride);
+        if (ElemImages != null && from < ElemImages.Length && to < ElemImages.Length)
+            ElemImages[to] = ElemImages[from];
+    }
+
+    public void ClearElemSlot(int slot)
+    {
+        if (slot < 0 || slot >= 8) return;
+        Array.Clear(Elem, slot * ElemStride, ElemStride);
+        if (ElemImages != null && slot < ElemImages.Length) ElemImages[slot] = "";
     }
 }
 
@@ -2271,12 +2861,38 @@ public sealed class TextMarker
     public string Text { get; set; } = "Text";
     public float X { get; set; } = 0.5f;
     public float Y { get; set; } = 0.5f;
-    public float Size { get; set; } = 32f;
+    public float Size { get; set; } = 0.06f;
     public float R { get; set; } = 1f;
     public float G { get; set; } = 1f;
     public float B { get; set; } = 1f;
     public float A { get; set; } = 1f;
     public int Align { get; set; } = 1;
     public bool Outline { get; set; } = true;
+    public string Font { get; set; } = "";
+    public bool Bold { get; set; }
+    public bool Italic { get; set; }
+    public float OutlineWidth { get; set; } = 0.10f;
+    public float OutlineR { get; set; }
+    public float OutlineG { get; set; }
+    public float OutlineB { get; set; }
+
+    public float LineHeight { get; set; } = 1.15f;
+    public float Tracking { get; set; }
+    public float Rotation { get; set; }
+
+    public float ShadowAmount { get; set; }
+    public float ShadowDist { get; set; } = 0.06f;
+    public float ShadowAngle { get; set; } = 1.05f;
+    public float ShadowSoft { get; set; } = 0.06f;
+    public float ShadowR { get; set; }
+    public float ShadowG { get; set; }
+    public float ShadowB { get; set; }
+
+    public float Plate { get; set; }
+    public float PlateR { get; set; }
+    public float PlateG { get; set; }
+    public float PlateB { get; set; }
+    public float PlatePad { get; set; } = 0.35f;
+    public float PlateRound { get; set; } = 0.30f;
 }
 

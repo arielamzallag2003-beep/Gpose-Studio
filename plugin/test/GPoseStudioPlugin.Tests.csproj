@@ -19,6 +19,8 @@
     <Compile Include="..\src\PackedArray.cs" />
     <Compile Include="..\src\Frame.cs" />
     <Compile Include="..\src\BuiltinGuard.cs" />
+    <Compile Include="..\src\ZoneBits.cs" />
+    <Compile Include="..\src\ElementImages.cs" />
     <!-- The two files a look actually round-trips through. They reach Dalamud in a
          handful of spots, so TestServices.cs stands in for it: the seam is in the
          build, not in the shipped code. -->
@@ -33,5 +35,10 @@
     <Compile Include="FrameTests.cs" />
     <Compile Include="BuiltinGuardTests.cs" />
     <Compile Include="LookRoundTripTests.cs" />
+    <Compile Include="ZoneBitsTests.cs" />
+    <Compile Include="ElementImagesTests.cs" />
+    <Compile Include="ElementLayerTests.cs" />
+    <Compile Include="BuiltinSetTests.cs" />
+    <Compile Include="TextMarkerTests.cs" />
   </ItemGroup>
 </Project>

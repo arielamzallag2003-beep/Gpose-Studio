@@ -29,6 +29,14 @@ internal static class LookName
         return stripped;
     }
 
+    public static bool IsReservedDeviceName(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        int dot = name.IndexOf('.');
+        var stem = dot >= 0 ? name.Substring(0, dot) : name;
+        return Reserved.Contains(stem);
+    }
+
     public static bool IsUsable(string? raw, out string error)
     {
         error = "";

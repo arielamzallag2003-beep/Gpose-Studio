@@ -16,7 +16,7 @@ public class PngEmbedTests
     [Fact]
     public void ALookSurvivesTheRoundTrip()
     {
-        var look = "{\"Exposure\":0.25,\"Name\":\"Slow Burn\"}";
+        var look = "{\"Exposure\":0.25,\"Name\":\"Evening Rain\"}";
         var png = Png.Encode(8, 4, Pixels(8, 4), look);
 
         Assert.True(Png.TryReadEmbeddedText(png, out var back));

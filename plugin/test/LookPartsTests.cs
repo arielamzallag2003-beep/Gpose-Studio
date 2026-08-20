@@ -84,4 +84,36 @@ public class LookPartsTests
         })
             Assert.Equal(part, LookStore.PartOf(probe));
     }
+
+    [Theory]
+    [InlineData("MaskAMode")]
+    [InlineData("MaskBCx")]
+    [InlineData("MaskCFeather")]
+    [InlineData("MaskAInvert")]
+    public void MasksAreOtherSoPartialLoadsLeaveThemAlone(string name)
+    {
+        Assert.Equal(LookStore.Part.Other, LookStore.PartOf(name));
+    }
+
+    [Theory]
+    [InlineData("ZoneBgFill", LookStore.Part.Background)]
+    [InlineData("ZoneBackdrop", LookStore.Part.Background)]
+    [InlineData("ZoneFog", LookStore.Part.Background)]
+    [InlineData("ZoneGlow", LookStore.Part.Light)]
+    [InlineData("ZoneFinal", LookStore.Part.Grade)]
+    [InlineData("ZoneGrade", LookStore.Part.Grade)]
+    public void EveryRoutingIntTravelsWithTheTabItBelongsTo(string name, LookStore.Part want)
+    {
+        Assert.Equal(want, LookStore.PartOf(name));
+    }
+
+    [Fact]
+    public void NoRoutingIntIsLeftUnclassified()
+    {
+        foreach (var p in typeof(PluginConfig).GetProperties())
+        {
+            if (p.PropertyType != typeof(int) || !p.Name.StartsWith("Zone", System.StringComparison.Ordinal)) continue;
+            Assert.NotEqual(LookStore.Part.Other, LookStore.PartOf(p.Name));
+        }
+    }
 }

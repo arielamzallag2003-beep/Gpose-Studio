@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 
 namespace GPoseStudio;
@@ -15,7 +16,9 @@ public static partial class LookStore
         "ShowGuides", "GuideThirds", "GuideGolden", "GuideCenter", "GuideHorizon", "GuideHorizonY", "GuideOpacity",
         "ExportAspect", "ShowExportFrame", "ExportScale", "ExportFormat", "ExportJpegQuality",
         "EmbedLookInPng", "ExportTransparent", "DebugShowMatte",
-        "Pinned",
+        "DebugShowMask", "MaskShowWhich", "PlacingMask", "PlacingText", "LoadFromBase",
+        "FreezeAnimation",
+        "Pinned", "PinnedLooks",
     };
 
     public static string FolderPath
@@ -81,10 +84,12 @@ public static partial class LookStore
 
     private static readonly HashSet<string> NotShareable = new() { "ElemImages" };
 
+    private static readonly PropertyInfo[] Props = typeof(PluginConfig).GetProperties();
+
     public static string Capture(PluginConfig cfg, bool forSharing = false, Part part = Part.All)
     {
         var dict = new Dictionary<string, object?>();
-        foreach (var p in typeof(PluginConfig).GetProperties())
+        foreach (var p in Props)
         {
             if (!p.CanRead || !p.CanWrite || Exclude.Contains(p.Name)) continue;
             if (forSharing && NotShareable.Contains(p.Name)) continue;
@@ -223,7 +228,7 @@ public static partial class LookStore
         catch { return false; }
         if (dict == null) return false;
 
-        foreach (var p in typeof(PluginConfig).GetProperties())
+        foreach (var p in Props)
         {
             if (!p.CanWrite || Exclude.Contains(p.Name)) continue;
             if (part != Part.All && PartOf(p.Name) != part && !IsAlwaysCarried(p.Name)) continue;
@@ -293,6 +298,27 @@ public static partial class LookStore
 
     public static readonly (string Name, string Cat, Action<PluginConfig> Apply)[] Builtins =
     {
+        ("Studio Grey", "Portrait", c => c.ApplyStudioGreyPreset()),
+        ("Window Light", "Portrait", c => c.ApplyWindowLightPreset()),
+        ("Low Key", "Portrait", c => c.ApplyLowKeyPreset()),
+        ("High Key", "Portrait", c => c.ApplyHighKeyPreset()),
+
+        ("Anamorphic", "Cinematic", c => c.ApplyAnamorphicPreset()),
+        ("Night Noir", "Cinematic", c => c.ApplyNightNoirPreset()),
+        ("Golden Hour", "Cinematic", c => c.ApplyGoldenHourPreset()),
+
+        ("Deep Field", "Backdrop", c => c.ApplyDeepFieldPreset()),
+        ("The Void", "Backdrop", c => c.ApplyTheVoidPreset()),
+        ("Sumi", "Backdrop", c => c.ApplySumiPreset()),
+
+        ("Snowfall", "Weather", c => c.ApplySnowfallPreset()),
+
+        ("Neon Drive", "Stylised", c => c.ApplyNeonDrivePreset()),
+        ("Lost Signal", "Stylised", c => c.ApplyLostSignalPreset()),
+    };
+
+    public static readonly (string Name, string Cat, Action<PluginConfig> Apply)[] Legacy =
+    {
         ("Cosmic Nebula", "Space", c => c.ApplyCosmicPreset()),
         ("Astral Void", "Space", c => c.ApplyVoidPreset()),
         ("Dead Channel", "Stylised", c => c.ApplyHorrorPreset()),
@@ -321,10 +347,26 @@ public static partial class LookStore
         ("Chinese Ink", "Stylised", c => c.ApplyChineseInkPreset()),
     };
 
+    public static bool InstallLegacy(string name, out string error)
+    {
+        error = "";
+        foreach (var (n, _, apply) in Legacy)
+        {
+            if (n != name) continue;
+            if (Exists(name)) { error = $"‘{name}’ is already in your looks."; return false; }
+            var tmp = new PluginConfig();
+            apply(tmp);
+            tmp.CarryPatternIdentity();
+            return SaveContent(name, Capture(tmp), out error);
+        }
+        error = $"No legacy look called ‘{name}’.";
+        return false;
+    }
+
     public static bool Exists(string name) =>
         TryResolve(name, out var path, out _) && File.Exists(path);
 
-    private const int BuiltinsVersion = 59;
+    private const int BuiltinsVersion = 67;
     private static string MarkerPath => Path.Combine(FolderPath, ".builtins");
 
     private static void RecordBuiltinHash(string name, string content)

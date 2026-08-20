@@ -38,6 +38,8 @@ public sealed class LiveOverlay : IDisposable
     private nint _lastOutSrv;
     private nint _lastDepthSrv;
 
+    private string? _elemRoot;
+
     private nint _depthSeenSrv;
     private int _depthSettled;
     private const int DepthSettleFrames = 3;
@@ -84,6 +86,8 @@ public sealed class LiveOverlay : IDisposable
 
         DrawGuides(Plugin.Config);
         DrawTexts(Plugin.Config);
+        DrawMaskPlacement(Plugin.Config);
+        DrawTextPlacement(Plugin.Config);
 
         bool active = _gate.IsActive && !_gpuFailed;
         bool showLive = Enabled;
@@ -162,11 +166,12 @@ public sealed class LiveOverlay : IDisposable
             var memeSrvs = new nint[8];
             bool memeChanged = false;
             var images = cfg.ElemImages;
+            var elemRoot = _elemRoot ??= ElementImages.FolderPath;
             for (int L = 0; L < 8; L++)
             {
                 nint mh = 0;
                 IDalamudTextureWrap? wrap = null;
-                string path = images != null && L < images.Length ? (images[L] ?? "") : "";
+                string path = ElementImages.Resolve(elemRoot, images != null && L < images.Length ? images[L] : null);
                 if (path.Length > 0)
                 {
                     try
@@ -214,7 +219,7 @@ public sealed class LiveOverlay : IDisposable
                 TexelX = 1f / w,
                 TexelY = 1f / h,
                 HasDepth = depthTrusted ? 1 : 0,
-                DebugView = cfg.DebugShowGate ? 2 : (cfg.DebugShowDepth ? 1 : (cfg.DebugShowClipping ? 3 : (cfg.DebugShowMatte && cfg.ExportTransparent ? 4 : 0))),
+                DebugView = cfg.DebugShowGate ? 2 : (cfg.DebugShowDepth ? 1 : (cfg.DebugShowClipping ? 3 : (cfg.DebugShowMatte && cfg.ExportTransparent ? 4 : (cfg.DebugShowMask ? 5 : 0)))),
                 BlackPoint = cfg.BlackPoint,
                 WhitePoint = cfg.WhitePoint,
                 HueShift = cfg.HueShift,
@@ -316,6 +321,23 @@ public sealed class LiveOverlay : IDisposable
                 PatMatTint = cfg.PatMatTint,
                 Cutout = 0,
                 CutoutFeather = cfg.CutoutFeather, CutoutShrink = cfg.CutoutShrink,
+                MaskAMode = cfg.MaskAMode, MaskACx = cfg.MaskACx, MaskACy = cfg.MaskACy,
+                MaskASize = cfg.MaskASize, MaskAEllipse = cfg.MaskAEllipse,
+                MaskAAngle = cfg.MaskAAngle, MaskAFeather = cfg.MaskAFeather,
+                MaskAInvert = cfg.MaskAInvert ? 1 : 0,
+                MaskBMode = cfg.MaskBMode, MaskBCx = cfg.MaskBCx, MaskBCy = cfg.MaskBCy,
+                MaskBSize = cfg.MaskBSize, MaskBEllipse = cfg.MaskBEllipse,
+                MaskBAngle = cfg.MaskBAngle, MaskBFeather = cfg.MaskBFeather,
+                MaskBInvert = cfg.MaskBInvert ? 1 : 0,
+                MaskCMode = cfg.MaskCMode, MaskCCx = cfg.MaskCCx, MaskCCy = cfg.MaskCCy,
+                MaskCSize = cfg.MaskCSize, MaskCEllipse = cfg.MaskCEllipse,
+                MaskCAngle = cfg.MaskCAngle, MaskCFeather = cfg.MaskCFeather,
+                MaskCInvert = cfg.MaskCInvert ? 1 : 0,
+                MaskShow = (cfg.PlacingMask >= 1 && cfg.PlacingMask <= 3)
+                    ? cfg.PlacingMask : Math.Clamp(cfg.MaskShowWhich, 1, 3),
+                GradeMask = cfg.ZoneGrade,
+                ZoneBgFill = cfg.ZoneBgFill, ZoneBackdrop = cfg.ZoneBackdrop,
+                ZoneFog = cfg.ZoneFog, ZoneGlow = cfg.ZoneGlow, ZoneFinal = cfg.ZoneFinal,
                 EnFinal = cfg.EnFinalGrade ? 1 : 0, FinalExposure = cfg.FinalExposure,
                 FinalContrast = cfg.FinalContrast, FinalSat = cfg.FinalSat,
                 FinalTemp = cfg.FinalTemp, FinalLift = cfg.FinalLift,
@@ -413,15 +435,18 @@ public sealed class LiveOverlay : IDisposable
                 SpotAngle = cfg.SpotAngle, SpotWarm = cfg.SpotWarm, ParticleType = cfg.ParticleType, ParticleAmount = cfg.ParticleAmount,
                 ParticleSize = cfg.ParticleSize, ParticleFall = cfg.ParticleFall, ParticleR = cfg.ParticleR, ParticleG = cfg.ParticleG,
                 ParticleB = cfg.ParticleB, BokehShape = cfg.BokehShape, BokehAmount = cfg.BokehAmount,
-                Time = (((cfg.EnBackdrop || cfg.BgBStyle > 0 || cfg.EnForegroundOn) && cfg.AnimSpeed > 0f)
-                        || (cfg.EnHud && cfg.HudIntensity > 0f && (cfg.HudRadar > 0f || cfg.HudFlicker > 0f))
-                        || (cfg.EnParticles && cfg.ParticleAmount > 0f)
-                        || (cfg.EnElements && cfg.AnyElementAnimated()))
-                    ? (float)_animClock.Elapsed.TotalSeconds : 0f,
+                ParticleSoft = cfg.ParticleSoft, ParticleTumble = cfg.ParticleTumble,
+                ParticleBlend = cfg.ParticleSolid ? 1 : 0,
+                BokehDensity = cfg.BokehDensity, BokehRim = cfg.BokehRim,
+                BokehCatEye = cfg.BokehCatEye, BokehThreshold = cfg.BokehThreshold,
+                BokehBlades = cfg.BokehBlades, BokehRotate = cfg.BokehRotate,
+                BokehSource = cfg.BokehSource, BokehHueVar = cfg.BokehHueVar,
+                BokehR = cfg.BokehR, BokehG = cfg.BokehG, BokehB = cfg.BokehB,
+                Time = AnimTime(cfg),
                 Bypass = cfg.Bypass ? 1 : 0,
             };
             if (cfg.EnElements)
-                unsafe { for (int k = 0; k < 160; k++) p.Elem[k] = cfg.Elem[k]; }
+                unsafe { for (int k = 0; k < 8 * PluginConfig.ElemStride; k++) p.Elem[k] = cfg.Elem[k]; }
             if (cfg.EnForegroundOn && cfg.FgField != null)
                 unsafe { int n = Math.Min(224, cfg.FgField.Length); for (int k = 0; k < n; k++) p.FgField[k] = cfg.FgField[k]; }
             GateGroups(ref p, cfg);
@@ -492,6 +517,11 @@ public sealed class LiveOverlay : IDisposable
                     var (cw, ch, crgba) = CropForExport(img.Width, img.Height, img.Rgba, Plugin.Config.ExportAspect);
                     if (Plugin.Config.ShowGuides)
                         BurnGuidesInto(crgba, cw, ch, Plugin.Config, scale);
+                    if (Plugin.Config.EnText && Plugin.Config.Texts is { Count: > 0 })
+                    {
+                        var (tx0, ty0, tx1, ty1) = CropFrac(Plugin.Config.ExportAspect, (float)img.Width / img.Height);
+                        TextRender.Compose(crgba, cw, ch, SnapshotTexts(Plugin.Config), tx0, ty0, tx1, ty1);
+                    }
                     SaveImageAsync(cw, ch, crgba, dir, done);
                 }
                 else done?.Invoke("error: GPU readback failed");
@@ -586,35 +616,302 @@ public sealed class LiveOverlay : IDisposable
         }
     }
 
-    private void DrawTexts(PluginConfig cfg)
+    private int _maskDrag;
+    private Vector2 _maskGrab;
+
+    private void DrawMaskPlacement(PluginConfig cfg)
     {
-        if (!_gate.IsActive || !cfg.EnText || cfg.Texts == null || cfg.Texts.Count == 0) return;
+        int m = cfg.PlacingMask;
+        if (m < 1 || m > 3) return;
+        if (!_gate.IsActive) { cfg.PlacingMask = 0; return; }
+
+        int mi = m - 1;
+        int mode = cfg.MaskMode(mi);
+        if (mode == 0 || mode == 3) { cfg.PlacingMask = 0; return; }
+
+        float cx = cfg.MaskCx(mi), cy = cfg.MaskCy(mi), size = cfg.MaskSize(mi);
+        float ell = cfg.MaskEllipse(mi), ang = cfg.MaskAngle(mi), feath = cfg.MaskFeather(mi);
 
         var vp = ImGui.GetMainViewport();
-        var dl = ImGui.GetForegroundDrawList(vp);
-        var font = ImGui.GetFont();
-        float baseSize = ImGui.GetFontSize();
+        float W = vp.Size.X, H = vp.Size.Y;
+        float asp = (_capture is { Width: > 0, Height: > 0 })
+            ? (float)_capture.Width / _capture.Height
+            : (H > 0f ? W / H : 1f);
+        float kx = asp > 1e-4f ? W / asp : H;
+        float ky = H;
+        Vector2 centre = new(vp.Pos.X + cx * W, vp.Pos.Y + cy * H);
 
+        ImGui.SetNextWindowPos(vp.Pos);
+        ImGui.SetNextWindowSize(vp.Size);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
+        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0f, 0f, 0f, 0f));
+        bool begun = ImGui.Begin("##gps_mask_place",
+            ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize |
+            ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoBringToFrontOnFocus |
+            ImGuiWindowFlags.NoFocusOnAppearing | ImGuiWindowFlags.NoNav);
+        if (begun)
+        {
+            ImGui.InvisibleButton("##gps_mask_grab", vp.Size);
+
+            Vector2 mouse = ImGui.GetMousePos();
+            Vector2 dir = new((float)Math.Cos(ang), (float)Math.Sin(ang));
+            Vector2 handle2 = mode == 1
+                ? centre + new Vector2(-dir.Y * kx, dir.X * ky) * (size * ell)
+                : centre - new Vector2(dir.X * kx, dir.Y * ky) * 0.14f;
+
+            if (ImGui.IsItemActivated())
+            {
+                float d1 = Vector2.Distance(mouse, centre), d2 = Vector2.Distance(mouse, handle2);
+                _maskDrag = (d2 <= 18f && d2 <= d1) ? 2 : 1;
+                _maskGrab = mouse - (_maskDrag == 2 ? handle2 : centre);
+            }
+            if (ImGui.IsItemActive() && _maskDrag != 0)
+            {
+                Vector2 t = mouse - _maskGrab;
+                if (_maskDrag == 1)
+                {
+                    cx = Math.Clamp((t.X - vp.Pos.X) / Math.Max(W, 1f), -0.5f, 1.5f);
+                    cy = Math.Clamp((t.Y - vp.Pos.Y) / Math.Max(H, 1f), -0.5f, 1.5f);
+                }
+                else
+                {
+                    Vector2 r = new((t.X - centre.X) / Math.Max(kx, 1f), (t.Y - centre.Y) / Math.Max(ky, 1f));
+                    if (mode == 1)
+                    {
+                        size = Math.Clamp(r.Length() / Math.Max(ell, 0.05f), 0.01f, 1.5f);
+                        ang = (float)Math.Atan2(-r.X, r.Y);
+                    }
+                    else ang = (float)Math.Atan2(-r.Y, -r.X);
+                }
+                cfg.SetMaskCx(mi, cx); cfg.SetMaskCy(mi, cy);
+                cfg.SetMaskSize(mi, size); cfg.SetMaskAngle(mi, ang);
+            }
+            if (ImGui.IsItemDeactivated()) { _maskDrag = 0; cfg.Save(); }
+
+            if (ImGui.IsKeyPressed(ImGuiKey.Escape)) { cfg.PlacingMask = 0; _maskDrag = 0; }
+
+            centre = new Vector2(vp.Pos.X + cx * W, vp.Pos.Y + cy * H);
+            dir = new Vector2((float)Math.Cos(ang), (float)Math.Sin(ang));
+            handle2 = mode == 1
+                ? centre + new Vector2(-dir.Y * kx, dir.X * ky) * (size * ell)
+                : centre - new Vector2(dir.X * kx, dir.Y * ky) * 0.14f;
+
+            var dl = ImGui.GetWindowDrawList();
+            uint line = ImGui.GetColorU32(new Vector4(0.35f, 1f, 0.55f, 0.95f));
+            uint dark = ImGui.GetColorU32(new Vector4(0f, 0f, 0f, 0.75f));
+            uint faint = ImGui.GetColorU32(new Vector4(0.35f, 1f, 0.55f, 0.40f));
+            float f = Math.Max(feath, 1e-4f);
+            if (mode == 1)
+            {
+                void Ring(float rad, uint col, float thick, bool halo)
+                {
+                    if (rad <= 1e-4f) return;
+                    const int N = 96;
+                    var pts = new Vector2[N + 1];
+                    float ca = (float)Math.Cos(ang), sa = (float)Math.Sin(ang);
+                    for (int k = 0; k <= N; k++)
+                    {
+                        double th = k * (Math.PI * 2.0 / N);
+                        float ex = (float)Math.Cos(th) * rad, ey = (float)Math.Sin(th) * rad * ell;
+                        pts[k] = centre + new Vector2((ex * ca - ey * sa) * kx, (ex * sa + ey * ca) * ky);
+                    }
+                    if (halo) for (int k = 0; k < N; k++) dl.AddLine(pts[k], pts[k + 1], dark, thick + 1.7f);
+                    for (int k = 0; k < N; k++) dl.AddLine(pts[k], pts[k + 1], col, thick);
+                }
+                Ring(size + f, faint, 1.2f, false);
+                Ring(size - f, faint, 1.2f, false);
+                Ring(size, line, 1.8f, true);
+            }
+            else
+            {
+                Vector2 perp = new(-dir.Y * kx, dir.X * ky);
+                perp = perp.Length() > 1e-4f ? perp / perp.Length() : new Vector2(0f, 1f);
+                Vector2 step = new(dir.X * kx, dir.Y * ky);
+                float reach = W + H;
+                void Edge(Vector2 at, uint col, float thick, bool halo)
+                {
+                    Vector2 a = at - perp * reach, b = at + perp * reach;
+                    if (halo) dl.AddLine(a, b, dark, thick + 1.7f);
+                    dl.AddLine(a, b, col, thick);
+                }
+                Edge(centre - step * f, faint, 1.2f, false);
+                Edge(centre + step * f, faint, 1.2f, false);
+                Edge(centre, line, 1.8f, true);
+                dl.AddLine(centre, centre - step * 0.10f, line, 1.8f);
+            }
+            foreach (var h in new[] { centre, handle2 })
+            {
+                dl.AddCircleFilled(h, 6.5f, dark);
+                dl.AddCircleFilled(h, 4.5f, line);
+            }
+
+            var font = ImGui.GetFont();
+            string hint = mode == 1
+                ? $"Placing mask {(char)('A' + m - 1)} — drag the middle to move it, the edge dot to size and turn it. Esc when done."
+                : $"Placing mask {(char)('A' + m - 1)} — drag the middle to move the edge, the outer dot to aim it. Esc when done.";
+            if (!cfg.DebugShowMask)
+                hint += "   (tick Show what this covers to see the fill)";
+            var at = new Vector2(vp.Pos.X + 24f, vp.Pos.Y + 24f);
+            dl.AddText(font, 18f, at + new Vector2(1f, 1f), dark, hint);
+            dl.AddText(font, 18f, at, line, hint);
+        }
+        ImGui.End();
+        ImGui.PopStyleColor();
+        ImGui.PopStyleVar();
+    }
+
+    private static List<TextMarker> SnapshotTexts(PluginConfig cfg)
+    {
+        var outp = new List<TextMarker>();
+        if (cfg.Texts == null) return outp;
         foreach (var t in cfg.Texts)
         {
             if (t == null || string.IsNullOrEmpty(t.Text)) continue;
-            float size = Math.Clamp(t.Size, 6f, 400f);
-            Vector2 measured = ImGui.CalcTextSize(t.Text) * (size / Math.Max(baseSize, 1f));
-            float ox = t.Align == 1 ? measured.X * 0.5f : (t.Align == 2 ? measured.X : 0f);
-            var pos = new Vector2(vp.Pos.X + t.X * vp.Size.X - ox, vp.Pos.Y + t.Y * vp.Size.Y - measured.Y * 0.5f);
-
-            uint col = ImGui.ColorConvertFloat4ToU32(new Vector4(t.R, t.G, t.B, Math.Clamp(t.A, 0f, 1f)));
-            if (t.Outline)
+            outp.Add(new TextMarker
             {
-                uint oc = ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, Math.Clamp(t.A, 0f, 1f) * 0.85f));
-                float d = Math.Max(1f, size * 0.045f);
-                dl.AddText(font, size, pos + new Vector2(-d, 0f), oc, t.Text);
-                dl.AddText(font, size, pos + new Vector2(d, 0f), oc, t.Text);
-                dl.AddText(font, size, pos + new Vector2(0f, -d), oc, t.Text);
-                dl.AddText(font, size, pos + new Vector2(0f, d), oc, t.Text);
-            }
-            dl.AddText(font, size, pos, col, t.Text);
+                Text = t.Text, X = t.X, Y = t.Y, Size = t.Size,
+                R = t.R, G = t.G, B = t.B, A = t.A,
+                Align = t.Align, Outline = t.Outline, Font = t.Font,
+                Bold = t.Bold, Italic = t.Italic, OutlineWidth = t.OutlineWidth,
+                OutlineR = t.OutlineR, OutlineG = t.OutlineG, OutlineB = t.OutlineB,
+                LineHeight = t.LineHeight, Tracking = t.Tracking, Rotation = t.Rotation,
+                ShadowAmount = t.ShadowAmount, ShadowDist = t.ShadowDist, ShadowAngle = t.ShadowAngle,
+                ShadowSoft = t.ShadowSoft, ShadowR = t.ShadowR, ShadowG = t.ShadowG, ShadowB = t.ShadowB,
+                Plate = t.Plate, PlateR = t.PlateR, PlateG = t.PlateG, PlateB = t.PlateB,
+                PlatePad = t.PlatePad, PlateRound = t.PlateRound,
+            });
         }
+        return outp;
+    }
+
+    private static string TextKey(TextMarker t, float frameH)
+        => string.Join('|', t.Text, TextRender.PixelSize(t, frameH).ToString("0.0"),
+                       t.R, t.G, t.B, t.A, t.Align, t.Outline, t.Font, t.Bold, t.Italic,
+                       t.OutlineWidth, t.OutlineR, t.OutlineG, t.OutlineB,
+                       t.LineHeight, t.Tracking, t.Rotation,
+                       t.ShadowAmount, t.ShadowDist, t.ShadowAngle, t.ShadowSoft,
+                       t.ShadowR, t.ShadowG, t.ShadowB,
+                       t.Plate, t.PlateR, t.PlateG, t.PlateB, t.PlatePad, t.PlateRound);
+
+    private readonly Dictionary<int, (string Key, IDalamudTextureWrap Tex, int W, int H, int OffX, int OffY)> _textCache = new();
+
+    private void DisposeTextCache()
+    {
+        foreach (var e in _textCache.Values) e.Tex.Dispose();
+        _textCache.Clear();
+    }
+
+    private void DrawTexts(PluginConfig cfg)
+    {
+        if (!_gate.IsActive || !cfg.EnText || cfg.Texts == null || cfg.Texts.Count == 0)
+        {
+            if (_textCache.Count > 0) DisposeTextCache();
+            return;
+        }
+
+        var vp = ImGui.GetMainViewport();
+        var dl = ImGui.GetForegroundDrawList(vp);
+        float frameH = Math.Max(vp.Size.Y, 1f);
+
+        var live = new HashSet<int>();
+        for (int i = 0; i < cfg.Texts.Count; i++)
+        {
+            var t = cfg.Texts[i];
+            if (t == null || string.IsNullOrEmpty(t.Text) || t.A <= 0.002f) continue;
+            live.Add(i);
+
+            var key = TextKey(t, frameH);
+            if (!_textCache.TryGetValue(i, out var entry) || entry.Key != key)
+            {
+                entry.Tex?.Dispose();
+                _textCache.Remove(i);
+                var r = TextRender.Rasterise(t, TextRender.PixelSize(t, frameH));
+                if (r.IsEmpty) continue;
+                try
+                {
+                    var tex = Services.TextureProvider.CreateFromRaw(
+                        RawImageSpecification.Rgba32(r.W, r.H), r.Rgba, $"gposestudio-text-{i}");
+                    _textCache[i] = (key, tex, r.W, r.H, r.OffX, r.OffY);
+                    entry = _textCache[i];
+                }
+                catch (Exception ex)
+                {
+                    Services.Log.Warning($"could not upload caption {i + 1}: {ex.Message}");
+                    continue;
+                }
+            }
+
+            var at = new Vector2(vp.Pos.X + t.X * vp.Size.X + entry.OffX,
+                                 vp.Pos.Y + t.Y * vp.Size.Y + entry.OffY);
+            dl.AddImage(entry.Tex.Handle, at, at + new Vector2(entry.W, entry.H));
+        }
+
+        if (_textCache.Count > live.Count)
+        {
+            var stale = new List<int>();
+            foreach (var k in _textCache.Keys) if (!live.Contains(k)) stale.Add(k);
+            foreach (var k in stale) { _textCache[k].Tex.Dispose(); _textCache.Remove(k); }
+        }
+    }
+
+    private Vector2 _textGrab;
+
+    private void DrawTextPlacement(PluginConfig cfg)
+    {
+        int n = cfg.PlacingText;
+        if (n < 1 || cfg.Texts == null || n > cfg.Texts.Count) { cfg.PlacingText = 0; return; }
+        if (!_gate.IsActive || !cfg.EnText) { cfg.PlacingText = 0; return; }
+
+        var t = cfg.Texts[n - 1];
+        if (t == null) { cfg.PlacingText = 0; return; }
+
+        var vp = ImGui.GetMainViewport();
+        ImGui.SetNextWindowPos(vp.Pos);
+        ImGui.SetNextWindowSize(vp.Size);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
+        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0f, 0f, 0f, 0f));
+        bool begun = ImGui.Begin("##gps_text_place",
+            ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize |
+            ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoBringToFrontOnFocus |
+            ImGuiWindowFlags.NoFocusOnAppearing | ImGuiWindowFlags.NoNav);
+        if (begun)
+        {
+            ImGui.InvisibleButton("##gps_text_grab", vp.Size);
+            var centre = new Vector2(vp.Pos.X + t.X * vp.Size.X, vp.Pos.Y + t.Y * vp.Size.Y);
+
+            if (ImGui.IsItemActivated()) _textGrab = ImGui.GetMousePos() - centre;
+            if (ImGui.IsItemActive())
+            {
+                var p = ImGui.GetMousePos() - _textGrab;
+                t.X = Math.Clamp((p.X - vp.Pos.X) / Math.Max(vp.Size.X, 1f), 0f, 1f);
+                t.Y = Math.Clamp((p.Y - vp.Pos.Y) / Math.Max(vp.Size.Y, 1f), 0f, 1f);
+                centre = new Vector2(vp.Pos.X + t.X * vp.Size.X, vp.Pos.Y + t.Y * vp.Size.Y);
+            }
+            if (ImGui.IsItemDeactivated()) cfg.Save();
+            if (ImGui.IsKeyPressed(ImGuiKey.Escape)) cfg.PlacingText = 0;
+
+            var dl = ImGui.GetWindowDrawList();
+            uint line = ImGui.GetColorU32(new Vector4(0.35f, 1f, 0.55f, 0.95f));
+            uint dark = ImGui.GetColorU32(new Vector4(0f, 0f, 0f, 0.75f));
+            if (_textCache.TryGetValue(n - 1, out var e))
+            {
+                var a0 = centre + new Vector2(e.OffX, e.OffY);
+                var b0 = a0 + new Vector2(e.W, e.H);
+                dl.AddRect(a0, b0, dark, 0f, ImDrawFlags.None, 3f);
+                dl.AddRect(a0, b0, line, 0f, ImDrawFlags.None, 1.4f);
+            }
+            dl.AddCircleFilled(centre, 6.5f, dark);
+            dl.AddCircleFilled(centre, 4.5f, line);
+
+            var font = ImGui.GetFont();
+            string hint = $"Placing caption {n} \u2014 drag it anywhere. Esc when done.";
+            var at = new Vector2(vp.Pos.X + 24f, vp.Pos.Y + 24f);
+            dl.AddText(font, 18f, at + new Vector2(1f, 1f), dark, hint);
+            dl.AddText(font, 18f, at, line, hint);
+        }
+        ImGui.End();
+        ImGui.PopStyleColor();
+        ImGui.PopStyleVar();
     }
 
     private static (int w, int h, byte[] rgba) CropForExport(int w, int h, byte[] rgba, int aspect)
@@ -784,7 +1081,34 @@ public sealed class LiveOverlay : IDisposable
         if (!c.EnBacklight) p.BacklightAmount = 0f;
         if (!c.EnSpot) p.SpotAmount = 0f;
         if (!c.EnParticles) { p.ParticleAmount = 0f; p.BokehAmount = 0f; }
+#if PUBLIC_BUILD
+        p.ParticleAmount = 0f; p.BokehAmount = 0f;
+#endif
     }
+
+    private float _frozenAt;
+    private bool _wasFrozen;
+
+    private float AnimTime(PluginConfig cfg)
+    {
+        bool animates =
+               ((cfg.EnBackdrop || cfg.BgBStyle > 0 || cfg.EnForegroundOn) && cfg.AnimSpeed > 0f)
+            || (cfg.EnHud && cfg.HudIntensity > 0f && (cfg.HudRadar > 0f || cfg.HudFlicker > 0f))
+            || (cfg.EnParticles && cfg.ParticleAmount > 0f)
+            || (cfg.EnElements && cfg.AnyElementAnimated());
+        if (!animates) { _wasFrozen = false; return 0f; }
+
+        float now = (float)_animClock.Elapsed.TotalSeconds;
+        if (cfg.FreezeAnimation)
+        {
+            if (!_wasFrozen) { _frozenAt = now; _wasFrozen = true; }
+            return _frozenAt;
+        }
+        if (_wasFrozen) { _animOffset += now - _frozenAt; _wasFrozen = false; }
+        return now - _animOffset;
+    }
+
+    private float _animOffset;
 
     private void StartCapture(uint viewportId)
     {
@@ -931,6 +1255,7 @@ public sealed class LiveOverlay : IDisposable
         _disposed = true;
         Services.PluginInterface.UiBuilder.Draw -= OnDraw;
         Services.Framework.Update -= OnFrameworkUpdate;
+        DisposeTextCache();
         Teardown();
         _gpu?.Dispose();
         _gpu = null;

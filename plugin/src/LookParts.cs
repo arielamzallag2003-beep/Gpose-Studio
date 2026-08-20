@@ -21,7 +21,8 @@ public static partial class LookStore
         ["EnColorBalance"] = Part.Grade, ["EnTealOrange"] = Part.Grade, ["EnSplitTone"] = Part.Grade,
         ["EnBleach"] = Part.Grade, ["EnGradMap"] = Part.Grade, ["EnFinalGrade"] = Part.Grade,
         ["ZoneCb"] = Part.Grade, ["ZoneTeal"] = Part.Grade, ["ZoneSplitTone"] = Part.Grade,
-        ["ZoneBleach"] = Part.Grade, ["ZoneGradMap"] = Part.Grade,
+        ["ZoneBleach"] = Part.Grade, ["ZoneGradMap"] = Part.Grade, ["ZoneGrade"] = Part.Grade,
+        ["ZoneFinal"] = Part.Grade,
 
         ["Vignette"] = Part.Camera, ["Grain"] = Part.Camera, ["Chroma"] = Part.Camera,
         ["ChromaClean"] = Part.Camera, ["ChromaRadial"] = Part.Camera, ["Letterbox"] = Part.Camera,
@@ -33,6 +34,7 @@ public static partial class LookStore
         ["EnGobo"] = Part.Light, ["EnHalo"] = Part.Light, ["EnShadow"] = Part.Light,
         ["EnGround"] = Part.Light, ["ZoneSpot"] = Part.Light, ["ZoneGobo"] = Part.Light,
         ["ZoneHalo"] = Part.Light, ["ZoneGround"] = Part.Light, ["ZoneShadow"] = Part.Light,
+        ["ZoneGlow"] = Part.Light,
         ["ZoneBacklight"] = Part.Light,
 
         ["SubjectPop"] = Part.Subject, ["EnRim"] = Part.Subject, ["EnSkin"] = Part.Subject,
@@ -47,6 +49,8 @@ public static partial class LookStore
         ["EnForegroundOn"] = Part.Background, ["EnFog"] = Part.Background,
         ["EnFrost"] = Part.Background, ["EnSubjectIso"] = Part.Background,
         ["ZoneBgPush"] = Part.Background, ["ZoneBgBlur"] = Part.Background,
+        ["ZoneBgFill"] = Part.Background, ["ZoneBackdrop"] = Part.Background,
+        ["ZoneFog"] = Part.Background,
         ["ZoneFrost"] = Part.Background,
 
         ["EnVhs"] = Part.Fx, ["EnHud"] = Part.Fx, ["EnUnderwater"] = Part.Fx,
@@ -62,6 +66,8 @@ public static partial class LookStore
 
     private static readonly (string Prefix, Part Part)[] Families =
     {
+        ("Mask", Part.Other),
+
         ("St", Part.Grade), ("Cb", Part.Grade), ("Gm", Part.Grade), ("Final", Part.Grade),
         ("Bleach", Part.Grade), ("Teal", Part.Grade), ("Denoise", Part.Grade),
 
