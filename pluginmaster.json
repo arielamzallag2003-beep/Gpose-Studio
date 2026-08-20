@@ -3,7 +3,7 @@
     "Author": "Mysterious Popoto",
     "Name": "GPoseStudio",
     "InternalName": "GPoseStudioPlugin",
-    "AssemblyVersion": "0.9.0.1",
+    "AssemblyVersion": "0.9.8.1",
     "Description": "Captures the GPose frame and applies GPoseStudio color/lighting looks. Cosmetic, client-side only. Works alongside Brio/Ktisis.",
     "ApplicableVersion": "any",
     "Tags": [
@@ -21,7 +21,7 @@
     "CanUnloadAsync": false,
     "LoadPriority": 0,
     "Punchline": "Live cinematic looks for GPose.",
-    "Changelog": "0.9.0 - Transparent export: the subject on nothing, cut with the same depth gate the backdrop uses, for compositing elsewhere. A matte preview to judge the edge before writing the file.\n0.8.2 - Built-in looks you have edited are kept rather than silently overwritten on update.\n0.8.1 - Copy a setting between fields, save part of a look, hold to preview a look before committing to it.\n0.8.0 - Looks travel: a look is stored inside exported PNGs, so an image can be imported later to recover it. Import and export a look as a file. First-run help on the Looks tab.\n0.7.2 - 89 unit tests, and a release that refuses to publish over a failing suite.",
+    "Changelog": "0.9.8 - Orbs: eight shapes including a bladed aperture from three leaves to twelve, their own colour and a spread across it, and a mode needing neither a highlight nor depth. Particles and orbs are still in progress and are not in this build yet.\n0.9.7 - Particles sit in the air rather than on the glass: three layers at different focus, sprites that tumble as they fall, and a Solid mode so ash stops glowing. Bokeh needs a highlight to exist, and has a cat's eye. Freeze stops the clock so a still can be composed.\n0.9.6 - Snowfall and Ashfall pulled back so the place you are shooting in still shows through them. A new option clears every setting before a look is applied, for the looks that do not mention everything: a saved part, or a file written before half these settings existed.\n0.9.5 - Text captions appear in the exported image. They never did: they were an overlay drawn on the game, and the file comes from the GPU, so a caption showed while you posed and was gone from every picture. One rasteriser now feeds both, so the preview is what gets saved. Multiple lines, any installed font, a real outline, and a size that no longer changes with export scale.\n0.9.4 - The built-in set rebuilt: 14 looks designed as a set rather than accumulated one at a time, across Portrait, Cinematic, Backdrop, Weather and Stylised. The 26 earlier looks are kept and installable, and never overwritten. The Looks tab is reorganised around the list rather than around the machinery.",
     "AcceptsFeedback": false,
     "IconUrl": "https://raw.githubusercontent.com/arielamzallag2003-beep/Gpose-Studio/repo/icon.png",
     "DownloadLinkInstall": "https://raw.githubusercontent.com/arielamzallag2003-beep/Gpose-Studio/repo/GPoseStudioPlugin.zip",
