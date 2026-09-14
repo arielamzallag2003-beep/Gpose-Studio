@@ -199,10 +199,27 @@ for const_name, entries in SHADERS.items():
                     print("         " + line.strip())
         if not ok:
             const_ok = False
+            # No bytecode left behind a shader that did not compile. The build embeds
+            # whatever .cso it finds, and nothing at runtime can tell an old one from a
+            # current one, so a stale file ships against HLSL and a C# struct it no longer
+            # matches. With none, the plugin compiles the current text at runtime instead.
+            try:
+                os.remove(cso_path)
+            except OSError:
+                pass
 
         # The main PS carries the full cbuffer; use it to police the C# mapping.
         if ok and const_name == "Hlsl" and entry == "PS" and os.path.exists(asm_path):
-            failures += check_layout(open(asm_path).read(), src)
+            bad_layout = check_layout(open(asm_path).read(), src)
+            failures += bad_layout
+            if bad_layout:
+                # Same reasoning: a shader whose cbuffer disagrees with the C# struct reads
+                # every value from the wrong place, and is worse than no bytecode at all.
+                const_ok = False
+                try:
+                    os.remove(cso_path)
+                except OSError:
+                    pass
 
         # Compare against a previous run to prove a refactor changed nothing.
         base_asm = os.path.join(basedir, "%s_%s.asm" % (const_name, entry)) if basedir else None

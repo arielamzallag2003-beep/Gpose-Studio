@@ -84,6 +84,12 @@ public sealed class LiveOverlay : IDisposable
     {
         if (_disposed) return;
 
+        while (_onRender.TryDequeue(out var job))
+        {
+            try { job(); }
+            catch (Exception ex) { Services.Log.Error(ex, "deferred render-thread work failed"); }
+        }
+
         DrawGuides(Plugin.Config);
         DrawTexts(Plugin.Config);
         DrawMaskPlacement(Plugin.Config);
@@ -106,7 +112,7 @@ public sealed class LiveOverlay : IDisposable
             var incoming = Interlocked.Exchange(ref _incoming, null);
             if (incoming != null)
             {
-                _capture?.Dispose();
+                ReleaseCapture(_capture);
                 _capture = incoming;
                 _captureChanged = true;
             }
@@ -186,273 +192,15 @@ public sealed class LiveOverlay : IDisposable
                 if (mh != _lastMemeSrvs[L]) memeChanged = true;
             }
 
-            var p = new GpuRenderer.Params
-            {
-                Exposure = cfg.Exposure,
-                Contrast = cfg.Contrast,
-                Saturation = cfg.Saturation,
-                Temperature = cfg.Temperature,
-                Tint = cfg.Tint,
-                Lift = cfg.Lift,
-                Gamma = cfg.Gamma,
-                Gain = cfg.Gain,
-                Vibrance = cfg.Vibrance,
-                Vignette = cfg.Vignette,
-                Sharpen = cfg.Sharpen,
-                Chroma = cfg.Chroma,
-                Grain = cfg.Grain,
-                Letterbox = cfg.Letterbox,
-                SwapRedBlue = cfg.SwapRedBlue ? 1 : 0,
-                Flip = cfg.FlipVertical ? 1 : 0,
-                FogStart = cfg.FogStart,
-                FogStrength = cfg.FogStrength,
-                FogColorR = cfg.FogColorR,
-                FogColorG = cfg.FogColorG,
-                FogColorB = cfg.FogColorB,
-                BgPushStart = cfg.BgPushStart,
-                BgPushStrength = cfg.BgPushStrength,
-                DofFocus = cfg.DofFocus,
-                DofRange = cfg.DofRange,
-                DofStrength = cfg.DofStrength,
-                DepthUvScaleX = depth.ScaleX,
-                DepthUvScaleY = depth.ScaleY,
-                TexelX = 1f / w,
-                TexelY = 1f / h,
-                HasDepth = depthTrusted ? 1 : 0,
-                DebugView = cfg.DebugShowGate ? 2 : (cfg.DebugShowDepth ? 1 : (cfg.DebugShowClipping ? 3 : (cfg.DebugShowMatte && cfg.ExportTransparent ? 4 : (cfg.DebugShowMask ? 5 : 0)))),
-                BlackPoint = cfg.BlackPoint,
-                WhitePoint = cfg.WhitePoint,
-                HueShift = cfg.HueShift,
-                Bleach = cfg.Bleach,
-                BleachContrast = cfg.BleachContrast,
-                TealOrange = cfg.TealOrange,
-                TealOrangePunch = cfg.TealOrangePunch,
-                ToShadowR = cfg.ToShadowR, ToShadowG = cfg.ToShadowG, ToShadowB = cfg.ToShadowB,
-                ToHighR = cfg.ToHighR, ToHighG = cfg.ToHighG, ToHighB = cfg.ToHighB,
-                ColorBalance = cfg.ColorBalance,
-                CbShadowR = cfg.CbShadowR, CbShadowG = cfg.CbShadowG, CbShadowB = cfg.CbShadowB,
-                CbMidR = cfg.CbMidR, CbMidG = cfg.CbMidG, CbMidB = cfg.CbMidB,
-                CbHighR = cfg.CbHighR, CbHighG = cfg.CbHighG, CbHighB = cfg.CbHighB,
-                FisheyeAmt = cfg.FisheyeAmt,
-                FisheyeZoom = cfg.FisheyeZoom,
-                SwirlAmt = cfg.SwirlAmt,
-                SwirlRadius = cfg.SwirlRadius,
-                MosaicSize = cfg.MosaicSize,
-                KaleidoSegs = cfg.KaleidoSegs,
-                KaleidoRot = cfg.KaleidoRot,
-                BloomAmount = cfg.BloomAmount,
-                BloomThreshold = cfg.BloomThreshold,
-                BloomRadius = cfg.BloomRadius,
-                Halation = cfg.Halation,
-                HalationR = cfg.HalationR, HalationG = cfg.HalationG, HalationB = cfg.HalationB,
-                GodrayAmount = cfg.GodrayAmount,
-                GodrayLightX = cfg.GodrayLightX,
-                GodrayLightY = cfg.GodrayLightY,
-                GodrayDecay = cfg.GodrayDecay,
-                GodrayThreshold = cfg.GodrayThreshold,
-                GodrayR = cfg.GodrayR, GodrayG = cfg.GodrayG, GodrayB = cfg.GodrayB,
-                RimStrength = cfg.RimStrength, RimThreshold = cfg.RimThreshold, RimWidth = cfg.RimWidth,
-                RimR = cfg.RimR, RimG = cfg.RimG, RimB = cfg.RimB,
-                BgRecolor = cfg.BgRecolor, BgRecolorStart = cfg.BgRecolorStart, BgRecolorFeather = cfg.BgRecolorFeather,
-                BgTopR = cfg.BgTopR, BgTopG = cfg.BgTopG, BgTopB = cfg.BgTopB,
-                BgBotR = cfg.BgBotR, BgBotG = cfg.BgBotG, BgBotB = cfg.BgBotB,
-                BgBlur = cfg.BgBlur, BgBlurStart = cfg.BgBlurStart,
-                Orton = cfg.Orton, Glamour = cfg.Glamour, GlamourMist = cfg.GlamourMist,
-                SoftBlurRadius = cfg.SoftBlurRadius,
-                GradMap = cfg.GradMap,
-                GmShadowR = cfg.GmShadowR, GmShadowG = cfg.GmShadowG, GmShadowB = cfg.GmShadowB,
-                GmMidR = cfg.GmMidR, GmMidG = cfg.GmMidG, GmMidB = cfg.GmMidB,
-                GmHighR = cfg.GmHighR, GmHighG = cfg.GmHighG, GmHighB = cfg.GmHighB,
-                Dehaze = cfg.Dehaze,
-                WaveAmt = cfg.WaveAmt, WaveFreq = cfg.WaveFreq, WavePhase = cfg.WavePhase,
-                GlitchAmt = cfg.GlitchAmt, GlitchBlocks = cfg.GlitchBlocks,
-                StShadowR = cfg.StShadowR, StShadowG = cfg.StShadowG, StShadowB = cfg.StShadowB,
-                StHighR = cfg.StHighR, StHighG = cfg.StHighG, StHighB = cfg.StHighB,
-                StBalance = cfg.StBalance, StAmount = cfg.StAmount,
-                Clarity = cfg.Clarity,
-                TiltAmt = cfg.TiltAmt, TiltFocus = cfg.TiltFocus, TiltRange = cfg.TiltRange,
-                FlowAmt = cfg.FlowAmt, FlowScale = cfg.FlowScale, FlowSeed = cfg.FlowSeed,
-                ScopeMode = cfg.ScopeMode, ScopeSplit = cfg.ScopeSplit, ScopeSoft = cfg.ScopeSoft,
-                EdgeAura = cfg.EdgeAura, EdgeWidth = cfg.EdgeWidth, EdgeThreshold = cfg.EdgeThreshold,
-                EdgeR = cfg.EdgeR, EdgeG = cfg.EdgeG, EdgeB = cfg.EdgeB,
-                Iridescent = cfg.Iridescent, IridFreq = cfg.IridFreq, IridShift = cfg.IridShift,
-                Prism = cfg.Prism,
-                LeakAmt = cfg.LeakAmt, LeakAngle = cfg.LeakAngle,
-                LeakR = cfg.LeakR, LeakG = cfg.LeakG, LeakB = cfg.LeakB,
-                AnamAmount = cfg.AnamAmount, AnamThreshold = cfg.AnamThreshold, AnamLength = cfg.AnamLength,
-                AnamR = cfg.AnamR, AnamG = cfg.AnamG, AnamB = cfg.AnamB,
-                HlRecovery = cfg.HlRecovery, SubjectPop = cfg.SubjectPop,
-                HaloAmount = cfg.HaloAmount, HaloSplit = cfg.HaloSplit,
-                HaloR = cfg.HaloR, HaloG = cfg.HaloG, HaloB = cfg.HaloB,
-                FrostAmount = cfg.FrostAmount, FrostCoverage = cfg.FrostCoverage, FrostFeather = cfg.FrostFeather,
-                WashAmount = cfg.WashAmount, WashX = cfg.WashX, WashY = cfg.WashY,
-                WashR = cfg.WashR, WashG = cfg.WashG, WashB = cfg.WashB,
-                CausticsAmt = cfg.CausticsAmt, CausticsScale = cfg.CausticsScale,
-                CausticsR = cfg.CausticsR, CausticsG = cfg.CausticsG, CausticsB = cfg.CausticsB,
-                ChromaClean = cfg.ChromaClean, Denoise = cfg.Denoise, DenoiseEdge = cfg.DenoiseEdge,
-                KuwaharaAmt = cfg.KuwaharaAmt, KuwaharaRadius = cfg.KuwaharaRadius,
-                BgFill = cfg.BgFill, BgFillStart = cfg.BgFillStart, BgFillFeather = cfg.BgFillFeather,
-                BgFillR = cfg.BgFillR, BgFillG = cfg.BgFillG, BgFillB = cfg.BgFillB,
-                ShadowAmount = cfg.ShadowAmount, ShadowSpread = cfg.ShadowSpread, ShadowOffsetX = cfg.ShadowOffsetX, ShadowOffsetY = cfg.ShadowOffsetY,
-                ShadowSoftness = cfg.ShadowSoftness, ShadowR = cfg.ShadowR, ShadowG = cfg.ShadowG, ShadowB = cfg.ShadowB,
-                ShadowContact = cfg.ShadowContact, ShadowDepth = cfg.ShadowDepth,
-                EdgeErode = cfg.EdgeErode, EdgeDespill = cfg.EdgeDespill, EdgeWrap = cfg.EdgeWrap, EdgeWrapWidth = cfg.EdgeWrapWidth,
-                FilmRolloff = cfg.FilmRolloff, FilmToe = cfg.FilmToe, FilmSat = cfg.FilmSat,
-                LensVig = cfg.LensVig, LensCornerSoft = cfg.LensCornerSoft, ChromaRadial = cfg.ChromaRadial,
-                BackdropLightAmt = cfg.BackdropLightAmt, BackdropLightX = cfg.BackdropLightX,
-                BackdropLightY = cfg.BackdropLightY, BackdropLightSize = cfg.BackdropLightSize,
-                ZoneNear = cfg.ZoneNear, ZoneNearSoft = cfg.ZoneNearSoft, ZoneWet = cfg.ZoneWet, ZoneBeauty = cfg.ZoneBeauty,
-                ZoneSkin = cfg.ZoneSkin, ZoneBacklight = cfg.ZoneBacklight, ZoneShadow = cfg.ZoneShadow, ZoneBokeh = cfg.ZoneBokeh,
-                ZoneBgPush = cfg.ZoneBgPush, ZoneBgBlur = cfg.ZoneBgBlur,
-                ZoneGobo = cfg.ZoneGobo, ZoneSpot = cfg.ZoneSpot, ZoneFrost = cfg.ZoneFrost, ZoneStylize = cfg.ZoneStylize,
-                ZoneUnderwater = cfg.ZoneUnderwater, ZoneVhs = cfg.ZoneVhs, ZoneRim = cfg.ZoneRim, ZoneGround = cfg.ZoneGround,
-                ZoneHalo = cfg.ZoneHalo, ZoneCb = cfg.ZoneCb, ZoneTeal = cfg.ZoneTeal, ZoneSplitTone = cfg.ZoneSplitTone,
-                ZoneBleach = cfg.ZoneBleach, ZoneGradMap = cfg.ZoneGradMap,
-                RimSplit = cfg.RimSplit, RimSplitAngle = cfg.RimSplitAngle,
-                RimSplitOffset = cfg.RimSplitOffset, RimSplitSoft = cfg.RimSplitSoft,
-                Rim2R = cfg.Rim2R, Rim2G = cfg.Rim2G, Rim2B = cfg.Rim2B,
-                Backlight2R = cfg.Backlight2R, Backlight2G = cfg.Backlight2G, Backlight2B = cfg.Backlight2B,
-                PatMat = cfg.PatMat, PatMatR = cfg.PatMatR, PatMatG = cfg.PatMatG, PatMatB = cfg.PatMatB,
-                PatMatRough = cfg.PatMatRough, PatMatSheen = cfg.PatMatSheen,
-                PatMatPos = cfg.PatMatPos, PatMatRange = cfg.PatMatRange,
-                PatColOverride = cfg.PatColOverride ? 1 : 0,
-                PatColR = cfg.PatColR, PatColG = cfg.PatColG, PatColB = cfg.PatColB,
-                PatColMode = cfg.PatColMode, PatCol2R = cfg.PatCol2R, PatCol2G = cfg.PatCol2G, PatCol2B = cfg.PatCol2B,
-                PatMatTint = cfg.PatMatTint,
-                Cutout = 0,
-                CutoutFeather = cfg.CutoutFeather, CutoutShrink = cfg.CutoutShrink,
-                MaskAMode = cfg.MaskAMode, MaskACx = cfg.MaskACx, MaskACy = cfg.MaskACy,
-                MaskASize = cfg.MaskASize, MaskAEllipse = cfg.MaskAEllipse,
-                MaskAAngle = cfg.MaskAAngle, MaskAFeather = cfg.MaskAFeather,
-                MaskAInvert = cfg.MaskAInvert ? 1 : 0,
-                MaskBMode = cfg.MaskBMode, MaskBCx = cfg.MaskBCx, MaskBCy = cfg.MaskBCy,
-                MaskBSize = cfg.MaskBSize, MaskBEllipse = cfg.MaskBEllipse,
-                MaskBAngle = cfg.MaskBAngle, MaskBFeather = cfg.MaskBFeather,
-                MaskBInvert = cfg.MaskBInvert ? 1 : 0,
-                MaskCMode = cfg.MaskCMode, MaskCCx = cfg.MaskCCx, MaskCCy = cfg.MaskCCy,
-                MaskCSize = cfg.MaskCSize, MaskCEllipse = cfg.MaskCEllipse,
-                MaskCAngle = cfg.MaskCAngle, MaskCFeather = cfg.MaskCFeather,
-                MaskCInvert = cfg.MaskCInvert ? 1 : 0,
-                MaskShow = (cfg.PlacingMask >= 1 && cfg.PlacingMask <= 3)
-                    ? cfg.PlacingMask : Math.Clamp(cfg.MaskShowWhich, 1, 3),
-                GradeMask = cfg.ZoneGrade,
-                ZoneBgFill = cfg.ZoneBgFill, ZoneBackdrop = cfg.ZoneBackdrop,
-                ZoneFog = cfg.ZoneFog, ZoneGlow = cfg.ZoneGlow, ZoneFinal = cfg.ZoneFinal,
-                EnFinal = cfg.EnFinalGrade ? 1 : 0, FinalExposure = cfg.FinalExposure,
-                FinalContrast = cfg.FinalContrast, FinalSat = cfg.FinalSat,
-                FinalTemp = cfg.FinalTemp, FinalLift = cfg.FinalLift,
-                FinalGamma = cfg.FinalGamma, FinalGain = cfg.FinalGain,
-                GroundMode = cfg.GroundMode, GroundCastAngle = cfg.GroundCastAngle,
-                GroundCastLen = cfg.GroundCastLen,
-                BgBPatColOverride = cfg.BgBPatColOverride ? 1 : 0, BgBPatColMode = cfg.BgBPatColMode, BgBPatColR = cfg.BgBPatColR, BgBPatColG = cfg.BgBPatColG,
-                BgBPatColB = cfg.BgBPatColB, BgBPatCol2R = cfg.BgBPatCol2R, BgBPatCol2G = cfg.BgBPatCol2G, BgBPatCol2B = cfg.BgBPatCol2B,
-                BgBPatCol3R = cfg.BgBPatCol3R, BgBPatCol3G = cfg.BgBPatCol3G, BgBPatCol3B = cfg.BgBPatCol3B, BgBPatCol4R = cfg.BgBPatCol4R,
-                BgBPatCol4G = cfg.BgBPatCol4G, BgBPatCol4B = cfg.BgBPatCol4B, BgBPatCol5R = cfg.BgBPatCol5R, BgBPatCol5G = cfg.BgBPatCol5G,
-                BgBPatCol5B = cfg.BgBPatCol5B, BgBPatMat = cfg.BgBPatMat, BgBPatMatR = cfg.BgBPatMatR, BgBPatMatG = cfg.BgBPatMatG,
-                BgBPatMatB = cfg.BgBPatMatB, BgBPatMatTint = cfg.BgBPatMatTint,
-                PatCol3R = cfg.PatCol3R, PatCol3G = cfg.PatCol3G, PatCol3B = cfg.PatCol3B,
-                PatCol4R = cfg.PatCol4R, PatCol4G = cfg.PatCol4G, PatCol4B = cfg.PatCol4B,
-                PatCol5R = cfg.PatCol5R, PatCol5G = cfg.PatCol5G, PatCol5B = cfg.PatCol5B,
-                BgStyle = cfg.BgStyle, BgScale = cfg.BgScale, BgAngle = cfg.BgAngle, BgGrain = cfg.BgGrain,
-                BgWarp = cfg.BgWarp, BgWarpAmt = cfg.BgWarpAmt, BgWarpScale = cfg.BgWarpScale,
-                BgWarpAmt2 = cfg.BgWarpAmt2, BgWarpScale2 = cfg.BgWarpScale2,
-                BgWarpX = cfg.BgWarpX, BgWarpY = cfg.BgWarpY,
-                BgOffX = cfg.BgOffX, BgOffY = cfg.BgOffY, BgScaleY = cfg.BgScaleY, BgSharp = cfg.BgSharp,
-                BgMidR = cfg.BgMidR, BgMidG = cfg.BgMidG, BgMidB = cfg.BgMidB,
-                BgMetallic = cfg.BgMetallic, BgRoughness = cfg.BgRoughness, BgSpecular = cfg.BgSpecular,
-                BgNormal = cfg.BgNormal, BgFresnel = cfg.BgFresnel,
-                BgLightX = cfg.BgLightX, BgLightY = cfg.BgLightY, BgLightZ = cfg.BgLightZ, BgLightInt = cfg.BgLightInt,
-                BgCol4R = cfg.BgCol4R, BgCol4G = cfg.BgCol4G, BgCol4B = cfg.BgCol4B, BgFbm = cfg.BgFbm,
-                BgStars = cfg.BgStars, BgStarDensity = cfg.BgStarDensity, BgStarSize = cfg.BgStarSize, BgGlow = cfg.BgGlow,
-                BgVignette = cfg.BgVignette, BgVignetteSize = cfg.BgVignetteSize, BgHueVar = cfg.BgHueVar, BgBright = cfg.BgBright,
-                BgNebWarp = cfg.BgNebWarp, BgNebContrast = cfg.BgNebContrast, BgVoidCore = cfg.BgVoidCore, BgVoidRing = cfg.BgVoidRing,
-                BgTwist = cfg.BgTwist, BgHaze = cfg.BgHaze, BgSparkle = cfg.BgSparkle, BgDisperse = cfg.BgDisperse,
-                BgRingWidth = cfg.BgRingWidth, BgRing2 = cfg.BgRing2, BgEmbers = cfg.BgEmbers, BgFlow = cfg.BgFlow,
-                BgCol5R = cfg.BgCol5R, BgCol5G = cfg.BgCol5G, BgCol5B = cfg.BgCol5B,
-                BgCol6R = cfg.BgCol6R, BgCol6G = cfg.BgCol6G, BgCol6B = cfg.BgCol6B, BgEmberSize = cfg.BgEmberSize,
-                BgPad0 = cfg.BgKeepVfx,
-                VhsStatic = cfg.VhsStatic, VhsScan = cfg.VhsScan, VhsScanCount = cfg.VhsScanCount, VhsDropout = cfg.VhsDropout,
-                VhsRoll = cfg.VhsRoll, VhsRollPos = cfg.VhsRollPos, VhsDesat = cfg.VhsDesat, VhsVignette = cfg.VhsVignette,
-                BgReflect = cfg.BgReflect, BgMatDisp = cfg.BgMatDisp, BgAniso = cfg.BgAniso, BgEnvSharp = cfg.BgEnvSharp,
-                BgEnvR = cfg.BgEnvR, BgEnvG = cfg.BgEnvG, BgEnvB = cfg.BgEnvB, BgClearcoat = cfg.BgClearcoat,
-                BgCausticAmt = cfg.BgCausticAmt, BgShafts = cfg.BgShafts, BgBubbles = cfg.BgBubbles,
-                UwTint = cfg.UwTint, UwTintR = cfg.UwTintR, UwTintG = cfg.UwTintG, UwTintB = cfg.UwTintB,
-                UwCaustic = cfg.UwCaustic, UwMotes = cfg.UwMotes, UwShafts = cfg.UwShafts, UwFog = cfg.UwFog,
-                GroundLevel = cfg.GroundLevel, GroundShadow = cfg.GroundShadow, GroundRipple = cfg.GroundRipple,
-                GroundTintR = cfg.GroundTintR, GroundTintG = cfg.GroundTintG, GroundTintB = cfg.GroundTintB,
-                GroundShadowX = cfg.GroundShadowX, GroundShadowY = cfg.GroundShadowY, GroundShadowW = cfg.GroundShadowW, GroundShadowH = cfg.GroundShadowH,
-                BgGradType = cfg.BgGradType, BgPatMode = cfg.BgPatMode, BgPatStrength = cfg.BgPatStrength, BgPatAngle = cfg.BgPatAngle,
-                UnivBase = cfg.UnivBase, UnivNoise = cfg.UnivNoise, UnivPattern = cfg.UnivPattern, UnivBlend = cfg.UnivBlend,
-                UnivNoiseAmt = cfg.UnivNoiseAmt, UnivNoiseScale = cfg.UnivNoiseScale, UnivWarp = cfg.UnivWarp, UnivDetail = cfg.UnivDetail,
-                AnimSpeed = cfg.AnimSpeed,
-                HudIntensity = cfg.HudIntensity, HudR = cfg.HudR, HudG = cfg.HudG, HudB = cfg.HudB,
-                HudReticle = cfg.HudReticle, HudRadar = cfg.HudRadar, HudScanline = cfg.HudScanline, HudHex = cfg.HudHex,
-                HudChroma = cfg.HudChroma, HudFlicker = cfg.HudFlicker, HudScale = cfg.HudScale, HudFrame = cfg.HudFrame,
-                BgBTopR = cfg.BgBTopR, BgBTopG = cfg.BgBTopG, BgBTopB = cfg.BgBTopB, BgBBotR = cfg.BgBBotR,
-                BgBBotG = cfg.BgBBotG, BgBBotB = cfg.BgBBotB, BgBStyle = cfg.BgBStyle, BgBScale = cfg.BgBScale,
-                BgBAngle = cfg.BgBAngle, BgBGrain = cfg.BgBGrain, BgBWarp = cfg.BgBWarp, BgBWarpAmt = cfg.BgBWarpAmt,
-                BgBWarpScale = cfg.BgBWarpScale, BgBOffX = cfg.BgBOffX, BgBOffY = cfg.BgBOffY, BgBScaleY = cfg.BgBScaleY,
-                BgBSharp = cfg.BgBSharp, BgBWarpX = cfg.BgBWarpX, BgBWarpY = cfg.BgBWarpY, BgBWarpAmt2 = cfg.BgBWarpAmt2,
-                BgBWarpScale2 = cfg.BgBWarpScale2, BgBMidR = cfg.BgBMidR, BgBMidG = cfg.BgBMidG, BgBMidB = cfg.BgBMidB,
-                BgBMetallic = cfg.BgBMetallic, BgBRoughness = cfg.BgBRoughness, BgBSpecular = cfg.BgBSpecular, BgBNormal = cfg.BgBNormal,
-                BgBFresnel = cfg.BgBFresnel, BgBLightX = cfg.BgBLightX, BgBLightY = cfg.BgBLightY, BgBLightZ = cfg.BgBLightZ,
-                BgBLightInt = cfg.BgBLightInt, BgBCol4R = cfg.BgBCol4R, BgBCol4G = cfg.BgBCol4G, BgBCol4B = cfg.BgBCol4B,
-                BgBFbm = cfg.BgBFbm, BgBStars = cfg.BgBStars, BgBStarDensity = cfg.BgBStarDensity, BgBStarSize = cfg.BgBStarSize,
-                BgBGlow = cfg.BgBGlow, BgBHueVar = cfg.BgBHueVar, BgBNebWarp = cfg.BgBNebWarp, BgBNebContrast = cfg.BgBNebContrast,
-                BgBTwist = cfg.BgBTwist, BgBHaze = cfg.BgBHaze, BgBSparkle = cfg.BgBSparkle, BgBDisperse = cfg.BgBDisperse,
-                BgBEmbers = cfg.BgBEmbers, BgBFlow = cfg.BgBFlow, BgBCol5R = cfg.BgBCol5R, BgBCol5G = cfg.BgBCol5G,
-                BgBCol5B = cfg.BgBCol5B, BgBCol6R = cfg.BgBCol6R, BgBCol6G = cfg.BgBCol6G, BgBCol6B = cfg.BgBCol6B,
-                BgBEmberSize = cfg.BgBEmberSize, BgBReflect = cfg.BgBReflect, BgBMatDisp = cfg.BgBMatDisp, BgBAniso = cfg.BgBAniso,
-                BgBEnvSharp = cfg.BgBEnvSharp, BgBEnvR = cfg.BgBEnvR, BgBEnvG = cfg.BgBEnvG, BgBEnvB = cfg.BgBEnvB,
-                BgBClearcoat = cfg.BgBClearcoat, BgBGradType = cfg.BgBGradType, BgBPatMode = cfg.BgBPatMode, BgBPatStrength = cfg.BgBPatStrength,
-                BgBPatAngle = cfg.BgBPatAngle, BgBUnivBase = cfg.BgBUnivBase, BgBUnivNoise = cfg.BgBUnivNoise, BgBUnivPattern = cfg.BgBUnivPattern,
-                BgBUnivBlend = cfg.BgBUnivBlend, BgBUnivNoiseAmt = cfg.BgBUnivNoiseAmt, BgBUnivNoiseScale = cfg.BgBUnivNoiseScale, BgBUnivWarp = cfg.BgBUnivWarp,
-                BgBUnivDetail = cfg.BgBUnivDetail, BgBPad0 = cfg.BgBPad0, BgBPad1 = cfg.BgBPad1, BgBPad2 = cfg.BgBPad2,
-                BlendMode = cfg.BlendMode, BlendAngle = cfg.BlendAngle, BlendOffset = cfg.BlendOffset, BlendCx = cfg.BlendCx,
-                BlendCy = cfg.BlendCy, BlendRadius = cfg.BlendRadius, BlendEllipse = cfg.BlendEllipse, BlendDepthSplit = cfg.BlendDepthSplit,
-                BlendDepthRef = cfg.BlendDepthRef, BlendDepthBend = cfg.BlendDepthBend, BlendFeather = cfg.BlendFeather, BlendNoiseAmt = cfg.BlendNoiseAmt,
-                BlendNoiseScale = cfg.BlendNoiseScale, BlendMatch = cfg.BlendMatch, BlendMix = cfg.BlendMix, BlendMixLevel = cfg.BlendMixLevel,
-                UnivHorizon = cfg.UnivHorizon, UnivGround = cfg.UnivGround, UnivOrb = cfg.UnivOrb, UnivOrbX = cfg.UnivOrbX, UnivOrbY = cfg.UnivOrbY, UnivOrbSize = cfg.UnivOrbSize, UnivRidges = cfg.UnivRidges, UnivParticle = cfg.UnivParticle,
-                BgBUnivHorizon = cfg.BgBUnivHorizon, BgBUnivGround = cfg.BgBUnivGround, BgBUnivOrb = cfg.BgBUnivOrb, BgBUnivOrbX = cfg.BgBUnivOrbX, BgBUnivOrbY = cfg.BgBUnivOrbY, BgBUnivOrbSize = cfg.BgBUnivOrbSize, BgBUnivRidges = cfg.BgBUnivRidges, BgBUnivParticle = cfg.BgBUnivParticle,
-                UnivCaustic = cfg.UnivCaustic, UnivShafts = cfg.UnivShafts,
-                BgBUnivCaustic = cfg.BgBUnivCaustic, BgBUnivShafts = cfg.BgBUnivShafts,
-                UnivPatBlend = cfg.UnivPatBlend, UnivPatStrength = cfg.UnivPatStrength,
-                BgBUnivPatBlend = cfg.BgBUnivPatBlend, BgBUnivPatStrength = cfg.BgBUnivPatStrength,
-                WetAmount = cfg.WetAmount, WetShine = cfg.WetShine, WetRough = cfg.WetRough, WetDeepen = cfg.WetDeepen, WetDroplets = cfg.WetDroplets, WetLightX = cfg.WetLightX, WetLightY = cfg.WetLightY, WetDepth = cfg.WetDepth,
-                WetHighlight = cfg.WetHighlight, WetFresnel = cfg.WetFresnel, WetDropSize = cfg.WetDropSize, WetDropDensity = cfg.WetDropDensity, WetDropTrail = cfg.WetDropTrail,
-                EnForeground = cfg.EnForegroundOn ? 1 : 0, FgPlaceMode = cfg.FgPlaceMode, FgPlaceSoft = cfg.FgPlaceSoft, FgPlaceSize = cfg.FgPlaceSize,
-                FgPlaceAngle = cfg.FgPlaceAngle, FgOpacity = cfg.FgOpacity, FgBlendMode = cfg.FgBlendMode, FgDepthGate = cfg.FgDepthGate,
-                FgSeamMode = cfg.FgSeamMode, FgSeamAngle = cfg.FgSeamAngle, FgSeamOffset = cfg.FgSeamOffset, FgSeamCx = cfg.FgSeamCx,
-                FgSeamCy = cfg.FgSeamCy, FgSeamRadius = cfg.FgSeamRadius, FgSeamEllipse = cfg.FgSeamEllipse, FgSeamDepthSplit = cfg.FgSeamDepthSplit,
-                FgSeamDepthRef = cfg.FgSeamDepthRef, FgSeamDepthBend = cfg.FgSeamDepthBend, FgSeamFeather = cfg.FgSeamFeather, FgSeamNoiseAmt = cfg.FgSeamNoiseAmt,
-                FgSeamNoiseScale = cfg.FgSeamNoiseScale, FgSeamMix = cfg.FgSeamMix, FgSeamMixLevel = cfg.FgSeamMixLevel, FgSeamMatch = cfg.FgSeamMatch,
-                GoboPattern = cfg.GoboPattern, GoboAmount = cfg.GoboAmount, GoboScale = cfg.GoboScale, GoboAngle = cfg.GoboAngle,
-                GoboSoft = cfg.GoboSoft, BeautyAmount = cfg.BeautyAmount, BeautyRadius = cfg.BeautyRadius, BeautyGlow = cfg.BeautyGlow,
-                SkinWarmth = cfg.SkinWarmth, SkinFlush = cfg.SkinFlush, SkinTintR = cfg.SkinTintR, SkinTintG = cfg.SkinTintG,
-                SkinTintB = cfg.SkinTintB, BacklightAmount = cfg.BacklightAmount, BacklightWidth = cfg.BacklightWidth, BacklightR = cfg.BacklightR,
-                BacklightG = cfg.BacklightG, BacklightB = cfg.BacklightB, SpotAmount = cfg.SpotAmount, SpotX = cfg.SpotX,
-                SpotY = cfg.SpotY, SpotRadius = cfg.SpotRadius, SpotEllipse = cfg.SpotEllipse, SpotSoft = cfg.SpotSoft,
-                SpotAngle = cfg.SpotAngle, SpotWarm = cfg.SpotWarm, ParticleType = cfg.ParticleType, ParticleAmount = cfg.ParticleAmount,
-                ParticleSize = cfg.ParticleSize, ParticleFall = cfg.ParticleFall, ParticleR = cfg.ParticleR, ParticleG = cfg.ParticleG,
-                ParticleB = cfg.ParticleB, BokehShape = cfg.BokehShape, BokehAmount = cfg.BokehAmount,
-                ParticleSoft = cfg.ParticleSoft, ParticleTumble = cfg.ParticleTumble,
-                ParticleBlend = cfg.ParticleSolid ? 1 : 0,
-                BokehDensity = cfg.BokehDensity, BokehRim = cfg.BokehRim,
-                BokehCatEye = cfg.BokehCatEye, BokehThreshold = cfg.BokehThreshold,
-                BokehBlades = cfg.BokehBlades, BokehRotate = cfg.BokehRotate,
-                BokehSource = cfg.BokehSource, BokehHueVar = cfg.BokehHueVar,
-                BokehR = cfg.BokehR, BokehG = cfg.BokehG, BokehB = cfg.BokehB,
-                Time = AnimTime(cfg),
-                Bypass = cfg.Bypass ? 1 : 0,
-            };
-            if (cfg.EnElements)
-                unsafe { for (int k = 0; k < 8 * PluginConfig.ElemStride; k++) p.Elem[k] = cfg.Elem[k]; }
-            if (cfg.EnForegroundOn && cfg.FgField != null)
-                unsafe { int n = Math.Min(224, cfg.FgField.Length); for (int k = 0; k < n; k++) p.FgField[k] = cfg.FgField[k]; }
-            GateGroups(ref p, cfg);
+            var p = BuildParams(cfg, w, h, depth.ScaleX, depth.ScaleY, depthTrusted, AnimTime(cfg));
+
+            if (_exportPending)
+                ExportFrame(cfg, p, srcPtr, depthSrv, w, h, depth.ScaleX, depth.ScaleY, depthTrusted, memeSrvs);
 
             _framesSinceRender++;
-            bool needRender = _exportPending || !_haveRender || _captureChanged || memeChanged
+            bool inputsMoved = _captureChanged || memeChanged
+                               || depthSrv != _lastDepthSrv || _framesSinceRender >= RevalidateEveryFrames;
+            bool needRender = !_haveRender || _captureChanged || memeChanged
                               || depthSrv != _lastDepthSrv
                               || _framesSinceRender >= RevalidateEveryFrames
                               || !ParamsEqual(in p, in _lastParams);
@@ -475,60 +223,11 @@ public sealed class LiveOverlay : IDisposable
             {
                 var vp = ImGui.GetMainViewport();
                 BlitOverGame(new ImTextureID(outSrv), vp.Pos, vp.Size, _gposeRects);
+                DrawRegions(cfg, in p, srcPtr, depthSrv, w, h, depth.ScaleX, depth.ScaleY, depthTrusted,
+                            memeSrvs, inputsMoved, vp.Pos, vp.Size);
             }
+            else ReleaseRegions();
 
-            if (_exportPending)
-            {
-                _exportPending = false;
-                bool jpegOut = Plugin.Config.ExportFormat == 1;
-                var dir = _exportDir;
-                var done = _exportDone;
-
-                bool debugWasOn = p.DebugView != 0;
-                if (debugWasOn) p.DebugView = 0;
-
-                bool cutout = Plugin.Config.ExportTransparent && !jpegOut;
-                if (cutout)
-                {
-                    p.Cutout = 1;
-                    p.BgRecolor = 0f;
-                    p.BgFill = 0f;
-                }
-
-                int scale = Math.Clamp(Plugin.Config.ExportScale, 1, 4);
-                while (scale > 1 && ((long)w * scale > 16384 || (long)h * scale > 16384)) scale >>= 1;
-
-                if (scale > 1)
-                {
-                    _gpu.Render(srcPtr, depthSrv, w * scale, h * scale, p, memeSrvs, scale);
-                }
-                else if (debugWasOn || cutout)
-                {
-                    _gpu.Render(srcPtr, depthSrv, w, h, p, memeSrvs, 1);
-                }
-                if (debugWasOn || cutout) _haveRender = false;
-
-                var rb = _gpu.ReadbackLastOutput();
-                if (rb is { } img)
-                {
-                    if (!cutout && IsEffectivelyBlack(img.Rgba))
-                        done?.Invoke("warning: the exported image is black. Change any control to force a re-render, then export again.");
-
-                    var (cw, ch, crgba) = CropForExport(img.Width, img.Height, img.Rgba, Plugin.Config.ExportAspect);
-                    if (Plugin.Config.ShowGuides)
-                        BurnGuidesInto(crgba, cw, ch, Plugin.Config, scale);
-                    if (Plugin.Config.EnText && Plugin.Config.Texts is { Count: > 0 })
-                    {
-                        var (tx0, ty0, tx1, ty1) = CropFrac(Plugin.Config.ExportAspect, (float)img.Width / img.Height);
-                        TextRender.Compose(crgba, cw, ch, SnapshotTexts(Plugin.Config), tx0, ty0, tx1, ty1);
-                    }
-                    SaveImageAsync(cw, ch, crgba, dir, done);
-                }
-                else done?.Invoke("error: GPU readback failed");
-
-                _haveRender = false; _lastOutSrv = 0; _lastDepthSrv = 0;
-                if (scale > 1) _captureChanged = true;
-            }
         }
         catch (Exception ex)
         {
@@ -539,6 +238,284 @@ public sealed class LiveOverlay : IDisposable
             if (_exportPending) { _exportPending = false; _exportDone?.Invoke($"error: {ex.Message}"); }
             Teardown();
         }
+    }
+
+    private GpuRenderer.Params BuildParams(PluginConfig cfg, int w, int h, float depthScaleX, float depthScaleY,
+                                           bool depthTrusted, float time)
+    {
+        var p = new GpuRenderer.Params
+        {
+            Exposure = cfg.Exposure,
+            Contrast = cfg.Contrast,
+            Saturation = cfg.Saturation,
+            Temperature = cfg.Temperature,
+            Tint = cfg.Tint,
+            Lift = cfg.Lift,
+            Gamma = cfg.Gamma,
+            Gain = cfg.Gain,
+            Vibrance = cfg.Vibrance,
+            Vignette = cfg.Vignette,
+            Sharpen = cfg.Sharpen,
+            Chroma = cfg.Chroma,
+            Grain = cfg.Grain,
+            Letterbox = cfg.Letterbox,
+            SwapRedBlue = cfg.SwapRedBlue ? 1 : 0,
+            Flip = cfg.FlipVertical ? 1 : 0,
+            FogStart = cfg.FogStart,
+            FogStrength = cfg.FogStrength,
+            FogColorR = cfg.FogColorR,
+            FogColorG = cfg.FogColorG,
+            FogColorB = cfg.FogColorB,
+            BgPushStart = cfg.BgPushStart,
+            BgPushStrength = cfg.BgPushStrength,
+            DofFocus = cfg.DofFocus,
+            DofRange = cfg.DofRange,
+            DofStrength = cfg.DofStrength,
+            DepthUvScaleX = depthScaleX,
+            DepthUvScaleY = depthScaleY,
+            TexelX = 1f / w,
+            TexelY = 1f / h,
+            HasDepth = depthTrusted ? 1 : 0,
+            DebugView = cfg.DebugShowGate ? 2 : (cfg.DebugShowDepth ? 1 : (cfg.DebugShowClipping ? 3 : (cfg.DebugShowMatte && cfg.ExportTransparent ? 4 : (cfg.DebugShowMask ? 5 : 0)))),
+            BlackPoint = cfg.BlackPoint,
+            WhitePoint = cfg.WhitePoint,
+            HueShift = cfg.HueShift,
+            Bleach = cfg.Bleach,
+            BleachContrast = cfg.BleachContrast,
+            TealOrange = cfg.TealOrange,
+            TealOrangePunch = cfg.TealOrangePunch,
+            ToShadowR = cfg.ToShadowR, ToShadowG = cfg.ToShadowG, ToShadowB = cfg.ToShadowB,
+            ToHighR = cfg.ToHighR, ToHighG = cfg.ToHighG, ToHighB = cfg.ToHighB,
+            ColorBalance = cfg.ColorBalance,
+            CbShadowR = cfg.CbShadowR, CbShadowG = cfg.CbShadowG, CbShadowB = cfg.CbShadowB,
+            CbMidR = cfg.CbMidR, CbMidG = cfg.CbMidG, CbMidB = cfg.CbMidB,
+            CbHighR = cfg.CbHighR, CbHighG = cfg.CbHighG, CbHighB = cfg.CbHighB,
+            FisheyeAmt = cfg.FisheyeAmt,
+            FisheyeZoom = cfg.FisheyeZoom,
+            SwirlAmt = cfg.SwirlAmt,
+            SwirlRadius = cfg.SwirlRadius,
+            MosaicSize = cfg.MosaicSize,
+            KaleidoSegs = cfg.KaleidoSegs,
+            KaleidoRot = cfg.KaleidoRot,
+            BloomAmount = cfg.BloomAmount,
+            BloomThreshold = cfg.BloomThreshold,
+            BloomRadius = cfg.BloomRadius,
+            Halation = cfg.Halation,
+            HalationR = cfg.HalationR, HalationG = cfg.HalationG, HalationB = cfg.HalationB,
+            GodrayAmount = cfg.GodrayAmount,
+            GodrayLightX = cfg.GodrayLightX,
+            GodrayLightY = cfg.GodrayLightY,
+            GodrayDecay = cfg.GodrayDecay,
+            GodrayThreshold = cfg.GodrayThreshold,
+            GodrayR = cfg.GodrayR, GodrayG = cfg.GodrayG, GodrayB = cfg.GodrayB,
+            RimStrength = cfg.RimStrength, RimThreshold = cfg.RimThreshold, RimWidth = cfg.RimWidth,
+            RimR = cfg.RimR, RimG = cfg.RimG, RimB = cfg.RimB,
+            BgRecolor = cfg.BgRecolor, BgRecolorStart = cfg.BgRecolorStart, BgRecolorFeather = cfg.BgRecolorFeather,
+            BgTopR = cfg.BgTopR, BgTopG = cfg.BgTopG, BgTopB = cfg.BgTopB,
+            BgBotR = cfg.BgBotR, BgBotG = cfg.BgBotG, BgBotB = cfg.BgBotB,
+            BgBlur = cfg.BgBlur, BgBlurStart = cfg.BgBlurStart,
+            Orton = cfg.Orton, Glamour = cfg.Glamour, GlamourMist = cfg.GlamourMist,
+            SoftBlurRadius = cfg.SoftBlurRadius,
+            GradMap = cfg.GradMap,
+            GmShadowR = cfg.GmShadowR, GmShadowG = cfg.GmShadowG, GmShadowB = cfg.GmShadowB,
+            GmMidR = cfg.GmMidR, GmMidG = cfg.GmMidG, GmMidB = cfg.GmMidB,
+            GmHighR = cfg.GmHighR, GmHighG = cfg.GmHighG, GmHighB = cfg.GmHighB,
+            Dehaze = cfg.Dehaze,
+            WaveAmt = cfg.WaveAmt, WaveFreq = cfg.WaveFreq, WavePhase = cfg.WavePhase,
+            GlitchAmt = cfg.GlitchAmt, GlitchBlocks = cfg.GlitchBlocks,
+            StShadowR = cfg.StShadowR, StShadowG = cfg.StShadowG, StShadowB = cfg.StShadowB,
+            StHighR = cfg.StHighR, StHighG = cfg.StHighG, StHighB = cfg.StHighB,
+            StBalance = cfg.StBalance, StAmount = cfg.StAmount,
+            Clarity = cfg.Clarity,
+            TiltAmt = cfg.TiltAmt, TiltFocus = cfg.TiltFocus, TiltRange = cfg.TiltRange,
+            FlowAmt = cfg.FlowAmt, FlowScale = cfg.FlowScale, FlowSeed = cfg.FlowSeed,
+            ScopeMode = cfg.ScopeMode, ScopeSplit = cfg.ScopeSplit, ScopeSoft = cfg.ScopeSoft,
+            EdgeAura = cfg.EdgeAura, EdgeWidth = cfg.EdgeWidth, EdgeThreshold = cfg.EdgeThreshold,
+            EdgeR = cfg.EdgeR, EdgeG = cfg.EdgeG, EdgeB = cfg.EdgeB,
+            Iridescent = cfg.Iridescent, IridFreq = cfg.IridFreq, IridShift = cfg.IridShift,
+            Prism = cfg.Prism,
+            LeakAmt = cfg.LeakAmt, LeakAngle = cfg.LeakAngle,
+            LeakR = cfg.LeakR, LeakG = cfg.LeakG, LeakB = cfg.LeakB,
+            AnamAmount = cfg.AnamAmount, AnamThreshold = cfg.AnamThreshold, AnamLength = cfg.AnamLength,
+            AnamR = cfg.AnamR, AnamG = cfg.AnamG, AnamB = cfg.AnamB,
+            HlRecovery = cfg.HlRecovery, SubjectPop = cfg.SubjectPop,
+            HaloAmount = cfg.HaloAmount, HaloSplit = cfg.HaloSplit,
+            HaloR = cfg.HaloR, HaloG = cfg.HaloG, HaloB = cfg.HaloB,
+            FrostAmount = cfg.FrostAmount, FrostCoverage = cfg.FrostCoverage, FrostFeather = cfg.FrostFeather,
+            WashAmount = cfg.WashAmount, WashX = cfg.WashX, WashY = cfg.WashY,
+            WashR = cfg.WashR, WashG = cfg.WashG, WashB = cfg.WashB,
+            CausticsAmt = cfg.CausticsAmt, CausticsScale = cfg.CausticsScale,
+            CausticsR = cfg.CausticsR, CausticsG = cfg.CausticsG, CausticsB = cfg.CausticsB,
+            ChromaClean = cfg.ChromaClean, Denoise = cfg.Denoise, DenoiseEdge = cfg.DenoiseEdge,
+            KuwaharaAmt = cfg.KuwaharaAmt, KuwaharaRadius = cfg.KuwaharaRadius,
+            BgFill = cfg.BgFill, BgFillStart = cfg.BgFillStart, BgFillFeather = cfg.BgFillFeather,
+            BgFillR = cfg.BgFillR, BgFillG = cfg.BgFillG, BgFillB = cfg.BgFillB,
+            ShadowAmount = cfg.ShadowAmount, ShadowSpread = cfg.ShadowSpread, ShadowOffsetX = cfg.ShadowOffsetX, ShadowOffsetY = cfg.ShadowOffsetY,
+            ShadowSoftness = cfg.ShadowSoftness, ShadowR = cfg.ShadowR, ShadowG = cfg.ShadowG, ShadowB = cfg.ShadowB,
+            ShadowContact = cfg.ShadowContact, ShadowDepth = cfg.ShadowDepth,
+            EdgeErode = cfg.EdgeErode, EdgeDespill = cfg.EdgeDespill, EdgeWrap = cfg.EdgeWrap, EdgeWrapWidth = cfg.EdgeWrapWidth,
+            FilmRolloff = cfg.FilmRolloff, FilmToe = cfg.FilmToe, FilmSat = cfg.FilmSat,
+            LensVig = cfg.LensVig, LensCornerSoft = cfg.LensCornerSoft, ChromaRadial = cfg.ChromaRadial,
+            BackdropLightAmt = cfg.BackdropLightAmt, BackdropLightX = cfg.BackdropLightX,
+            BackdropLightY = cfg.BackdropLightY, BackdropLightSize = cfg.BackdropLightSize,
+            ZoneNear = cfg.ZoneNear, ZoneNearSoft = cfg.ZoneNearSoft, ZoneWet = cfg.ZoneWet, ZoneBeauty = cfg.ZoneBeauty,
+            ZoneSkin = cfg.ZoneSkin, ZoneBacklight = cfg.ZoneBacklight, ZoneShadow = cfg.ZoneShadow, ZoneBokeh = cfg.ZoneBokeh,
+            ZoneBgPush = cfg.ZoneBgPush, ZoneBgBlur = cfg.ZoneBgBlur,
+            ZoneGobo = cfg.ZoneGobo, ZoneSpot = cfg.ZoneSpot, ZoneFrost = cfg.ZoneFrost, ZoneStylize = cfg.ZoneStylize,
+            ZoneUnderwater = cfg.ZoneUnderwater, ZoneVhs = cfg.ZoneVhs, ZoneRim = cfg.ZoneRim, ZoneGround = cfg.ZoneGround,
+            ZoneHalo = cfg.ZoneHalo, ZoneCb = cfg.ZoneCb, ZoneTeal = cfg.ZoneTeal, ZoneSplitTone = cfg.ZoneSplitTone,
+            ZoneBleach = cfg.ZoneBleach, ZoneGradMap = cfg.ZoneGradMap,
+            RimSplit = cfg.RimSplit, RimSplitAngle = cfg.RimSplitAngle,
+            RimSplitOffset = cfg.RimSplitOffset, RimSplitSoft = cfg.RimSplitSoft,
+            Rim2R = cfg.Rim2R, Rim2G = cfg.Rim2G, Rim2B = cfg.Rim2B,
+            Backlight2R = cfg.Backlight2R, Backlight2G = cfg.Backlight2G, Backlight2B = cfg.Backlight2B,
+            PatMat = cfg.PatMat, PatMatR = cfg.PatMatR, PatMatG = cfg.PatMatG, PatMatB = cfg.PatMatB,
+            PatMatRough = cfg.PatMatRough, PatMatSheen = cfg.PatMatSheen,
+            PatMatPos = cfg.PatMatPos, PatMatRange = cfg.PatMatRange,
+            PatColOverride = cfg.PatColOverride ? 1 : 0,
+            PatColR = cfg.PatColR, PatColG = cfg.PatColG, PatColB = cfg.PatColB,
+            PatColMode = cfg.PatColMode, PatCol2R = cfg.PatCol2R, PatCol2G = cfg.PatCol2G, PatCol2B = cfg.PatCol2B,
+            PatMatTint = cfg.PatMatTint,
+            Cutout = cfg.DebugShowMatte && cfg.ExportTransparent ? 1 : 0,
+            CutoutFeather = cfg.CutoutFeather, CutoutShrink = cfg.CutoutShrink,
+            MaskShow = (cfg.PlacingMask >= 1 && cfg.PlacingMask <= PluginConfig.MaskCount)
+                ? cfg.PlacingMask : Math.Clamp(cfg.MaskShowWhich, 1, PluginConfig.MaskCount),
+            GradeMask = cfg.ZoneGrade,
+            ZoneBgFill = cfg.ZoneBgFill, ZoneBackdrop = cfg.ZoneBackdrop,
+            ZoneFog = cfg.ZoneFog, ZoneGlow = cfg.ZoneGlow, ZoneFinal = cfg.ZoneFinal,
+            FrameBreakOut = cfg.MaskBreakOut ? 1 : 0,
+            CutoutMasks = cfg.LiveMaskBits(cfg.ExportCutoutMasks), CutoutSubject = cfg.ExportCutoutSubject ? 1 : 0,
+            FrameFlags = (cfg.MaskFramesStacked ? 1 : 0) | (cfg.MaskOutlineBehind ? 2 : 0),
+            FrameFillR = cfg.MaskFillR, FrameFillG = cfg.MaskFillG, FrameFillB = cfg.MaskFillB, FrameFillA = cfg.MaskFillA,
+            RegionMask = 0, RegionOpacity = 1f,
+            EnFinal = cfg.EnFinalGrade ? 1 : 0, FinalExposure = cfg.FinalExposure,
+            FinalContrast = cfg.FinalContrast, FinalSat = cfg.FinalSat,
+            FinalTemp = cfg.FinalTemp, FinalLift = cfg.FinalLift,
+            FinalGamma = cfg.FinalGamma, FinalGain = cfg.FinalGain,
+            GroundMode = cfg.GroundMode, GroundCastAngle = cfg.GroundCastAngle,
+            GroundCastLen = cfg.GroundCastLen,
+            BgBPatColOverride = cfg.BgBPatColOverride ? 1 : 0, BgBPatColMode = cfg.BgBPatColMode, BgBPatColR = cfg.BgBPatColR, BgBPatColG = cfg.BgBPatColG,
+            BgBPatColB = cfg.BgBPatColB, BgBPatCol2R = cfg.BgBPatCol2R, BgBPatCol2G = cfg.BgBPatCol2G, BgBPatCol2B = cfg.BgBPatCol2B,
+            BgBPatCol3R = cfg.BgBPatCol3R, BgBPatCol3G = cfg.BgBPatCol3G, BgBPatCol3B = cfg.BgBPatCol3B, BgBPatCol4R = cfg.BgBPatCol4R,
+            BgBPatCol4G = cfg.BgBPatCol4G, BgBPatCol4B = cfg.BgBPatCol4B, BgBPatCol5R = cfg.BgBPatCol5R, BgBPatCol5G = cfg.BgBPatCol5G,
+            BgBPatCol5B = cfg.BgBPatCol5B, BgBPatMat = cfg.BgBPatMat, BgBPatMatR = cfg.BgBPatMatR, BgBPatMatG = cfg.BgBPatMatG,
+            BgBPatMatB = cfg.BgBPatMatB, BgBPatMatTint = cfg.BgBPatMatTint,
+            PatCol3R = cfg.PatCol3R, PatCol3G = cfg.PatCol3G, PatCol3B = cfg.PatCol3B,
+            PatCol4R = cfg.PatCol4R, PatCol4G = cfg.PatCol4G, PatCol4B = cfg.PatCol4B,
+            PatCol5R = cfg.PatCol5R, PatCol5G = cfg.PatCol5G, PatCol5B = cfg.PatCol5B,
+            BgStyle = cfg.BgStyle, BgScale = cfg.BgScale, BgAngle = cfg.BgAngle, BgGrain = cfg.BgGrain,
+            BgWarp = cfg.BgWarp, BgWarpAmt = cfg.BgWarpAmt, BgWarpScale = cfg.BgWarpScale,
+            BgWarpAmt2 = cfg.BgWarpAmt2, BgWarpScale2 = cfg.BgWarpScale2,
+            BgWarpX = cfg.BgWarpX, BgWarpY = cfg.BgWarpY,
+            BgOffX = cfg.BgOffX, BgOffY = cfg.BgOffY, BgScaleY = cfg.BgScaleY, BgSharp = cfg.BgSharp,
+            BgMidR = cfg.BgMidR, BgMidG = cfg.BgMidG, BgMidB = cfg.BgMidB,
+            BgMetallic = cfg.BgMetallic, BgRoughness = cfg.BgRoughness, BgSpecular = cfg.BgSpecular,
+            BgNormal = cfg.BgNormal, BgFresnel = cfg.BgFresnel,
+            BgLightX = cfg.BgLightX, BgLightY = cfg.BgLightY, BgLightZ = cfg.BgLightZ, BgLightInt = cfg.BgLightInt,
+            BgCol4R = cfg.BgCol4R, BgCol4G = cfg.BgCol4G, BgCol4B = cfg.BgCol4B, BgFbm = cfg.BgFbm,
+            BgStars = cfg.BgStars, BgStarDensity = cfg.BgStarDensity, BgStarSize = cfg.BgStarSize, BgGlow = cfg.BgGlow,
+            BgVignette = cfg.BgVignette, BgVignetteSize = cfg.BgVignetteSize, BgHueVar = cfg.BgHueVar, BgBright = cfg.BgBright,
+            BgNebWarp = cfg.BgNebWarp, BgNebContrast = cfg.BgNebContrast, BgVoidCore = cfg.BgVoidCore, BgVoidRing = cfg.BgVoidRing,
+            BgTwist = cfg.BgTwist, BgHaze = cfg.BgHaze, BgSparkle = cfg.BgSparkle, BgDisperse = cfg.BgDisperse,
+            BgRingWidth = cfg.BgRingWidth, BgRing2 = cfg.BgRing2, BgEmbers = cfg.BgEmbers, BgFlow = cfg.BgFlow,
+            BgCol5R = cfg.BgCol5R, BgCol5G = cfg.BgCol5G, BgCol5B = cfg.BgCol5B,
+            BgCol6R = cfg.BgCol6R, BgCol6G = cfg.BgCol6G, BgCol6B = cfg.BgCol6B, BgEmberSize = cfg.BgEmberSize,
+            BgPad0 = cfg.BgKeepVfx,
+            VhsStatic = cfg.VhsStatic, VhsScan = cfg.VhsScan, VhsScanCount = cfg.VhsScanCount, VhsDropout = cfg.VhsDropout,
+            VhsRoll = cfg.VhsRoll, VhsRollPos = cfg.VhsRollPos, VhsDesat = cfg.VhsDesat, VhsVignette = cfg.VhsVignette,
+            BgReflect = cfg.BgReflect, BgMatDisp = cfg.BgMatDisp, BgAniso = cfg.BgAniso, BgEnvSharp = cfg.BgEnvSharp,
+            BgEnvR = cfg.BgEnvR, BgEnvG = cfg.BgEnvG, BgEnvB = cfg.BgEnvB, BgClearcoat = cfg.BgClearcoat,
+            BgCausticAmt = cfg.BgCausticAmt, BgShafts = cfg.BgShafts, BgBubbles = cfg.BgBubbles,
+            UwTint = cfg.UwTint, UwTintR = cfg.UwTintR, UwTintG = cfg.UwTintG, UwTintB = cfg.UwTintB,
+            UwCaustic = cfg.UwCaustic, UwMotes = cfg.UwMotes, UwShafts = cfg.UwShafts, UwFog = cfg.UwFog,
+            GroundLevel = cfg.GroundLevel, GroundShadow = cfg.GroundShadow, GroundRipple = cfg.GroundRipple,
+            GroundTintR = cfg.GroundTintR, GroundTintG = cfg.GroundTintG, GroundTintB = cfg.GroundTintB,
+            GroundShadowX = cfg.GroundShadowX, GroundShadowY = cfg.GroundShadowY, GroundShadowW = cfg.GroundShadowW, GroundShadowH = cfg.GroundShadowH,
+            BgGradType = cfg.BgGradType, BgPatMode = cfg.BgPatMode, BgPatStrength = cfg.BgPatStrength, BgPatAngle = cfg.BgPatAngle,
+            UnivBase = cfg.UnivBase, UnivNoise = cfg.UnivNoise, UnivPattern = cfg.UnivPattern, UnivBlend = cfg.UnivBlend,
+            UnivNoiseAmt = cfg.UnivNoiseAmt, UnivNoiseScale = cfg.UnivNoiseScale, UnivWarp = cfg.UnivWarp, UnivDetail = cfg.UnivDetail,
+            AnimSpeed = cfg.AnimSpeed,
+            HudIntensity = cfg.HudIntensity, HudR = cfg.HudR, HudG = cfg.HudG, HudB = cfg.HudB,
+            HudReticle = cfg.HudReticle, HudRadar = cfg.HudRadar, HudScanline = cfg.HudScanline, HudHex = cfg.HudHex,
+            HudChroma = cfg.HudChroma, HudFlicker = cfg.HudFlicker, HudScale = cfg.HudScale, HudFrame = cfg.HudFrame,
+            BgBTopR = cfg.BgBTopR, BgBTopG = cfg.BgBTopG, BgBTopB = cfg.BgBTopB, BgBBotR = cfg.BgBBotR,
+            BgBBotG = cfg.BgBBotG, BgBBotB = cfg.BgBBotB, BgBStyle = cfg.BgBStyle, BgBScale = cfg.BgBScale,
+            BgBAngle = cfg.BgBAngle, BgBGrain = cfg.BgBGrain, BgBWarp = cfg.BgBWarp, BgBWarpAmt = cfg.BgBWarpAmt,
+            BgBWarpScale = cfg.BgBWarpScale, BgBOffX = cfg.BgBOffX, BgBOffY = cfg.BgBOffY, BgBScaleY = cfg.BgBScaleY,
+            BgBSharp = cfg.BgBSharp, BgBWarpX = cfg.BgBWarpX, BgBWarpY = cfg.BgBWarpY, BgBWarpAmt2 = cfg.BgBWarpAmt2,
+            BgBWarpScale2 = cfg.BgBWarpScale2, BgBMidR = cfg.BgBMidR, BgBMidG = cfg.BgBMidG, BgBMidB = cfg.BgBMidB,
+            BgBMetallic = cfg.BgBMetallic, BgBRoughness = cfg.BgBRoughness, BgBSpecular = cfg.BgBSpecular, BgBNormal = cfg.BgBNormal,
+            BgBFresnel = cfg.BgBFresnel, BgBLightX = cfg.BgBLightX, BgBLightY = cfg.BgBLightY, BgBLightZ = cfg.BgBLightZ,
+            BgBLightInt = cfg.BgBLightInt, BgBCol4R = cfg.BgBCol4R, BgBCol4G = cfg.BgBCol4G, BgBCol4B = cfg.BgBCol4B,
+            BgBFbm = cfg.BgBFbm, BgBStars = cfg.BgBStars, BgBStarDensity = cfg.BgBStarDensity, BgBStarSize = cfg.BgBStarSize,
+            BgBGlow = cfg.BgBGlow, BgBHueVar = cfg.BgBHueVar, BgBNebWarp = cfg.BgBNebWarp, BgBNebContrast = cfg.BgBNebContrast,
+            BgBTwist = cfg.BgBTwist, BgBHaze = cfg.BgBHaze, BgBSparkle = cfg.BgBSparkle, BgBDisperse = cfg.BgBDisperse,
+            BgBEmbers = cfg.BgBEmbers, BgBFlow = cfg.BgBFlow, BgBCol5R = cfg.BgBCol5R, BgBCol5G = cfg.BgBCol5G,
+            BgBCol5B = cfg.BgBCol5B, BgBCol6R = cfg.BgBCol6R, BgBCol6G = cfg.BgBCol6G, BgBCol6B = cfg.BgBCol6B,
+            BgBEmberSize = cfg.BgBEmberSize, BgBReflect = cfg.BgBReflect, BgBMatDisp = cfg.BgBMatDisp, BgBAniso = cfg.BgBAniso,
+            BgBEnvSharp = cfg.BgBEnvSharp, BgBEnvR = cfg.BgBEnvR, BgBEnvG = cfg.BgBEnvG, BgBEnvB = cfg.BgBEnvB,
+            BgBClearcoat = cfg.BgBClearcoat, BgBGradType = cfg.BgBGradType, BgBPatMode = cfg.BgBPatMode, BgBPatStrength = cfg.BgBPatStrength,
+            BgBPatAngle = cfg.BgBPatAngle, BgBUnivBase = cfg.BgBUnivBase, BgBUnivNoise = cfg.BgBUnivNoise, BgBUnivPattern = cfg.BgBUnivPattern,
+            BgBUnivBlend = cfg.BgBUnivBlend, BgBUnivNoiseAmt = cfg.BgBUnivNoiseAmt, BgBUnivNoiseScale = cfg.BgBUnivNoiseScale, BgBUnivWarp = cfg.BgBUnivWarp,
+            BgBUnivDetail = cfg.BgBUnivDetail, BgBPad0 = cfg.BgBPad0, BgBPad1 = cfg.BgBPad1, BgBPad2 = cfg.BgBPad2,
+            BlendMode = cfg.BlendMode, BlendAngle = cfg.BlendAngle, BlendOffset = cfg.BlendOffset, BlendCx = cfg.BlendCx,
+            BlendCy = cfg.BlendCy, BlendRadius = cfg.BlendRadius, BlendEllipse = cfg.BlendEllipse, BlendDepthSplit = cfg.BlendDepthSplit,
+            BlendDepthRef = cfg.BlendDepthRef, BlendDepthBend = cfg.BlendDepthBend, BlendFeather = cfg.BlendFeather, BlendNoiseAmt = cfg.BlendNoiseAmt,
+            BlendNoiseScale = cfg.BlendNoiseScale, BlendMatch = cfg.BlendMatch, BlendMix = cfg.BlendMix, BlendMixLevel = cfg.BlendMixLevel,
+            UnivHorizon = cfg.UnivHorizon, UnivGround = cfg.UnivGround, UnivOrb = cfg.UnivOrb, UnivOrbX = cfg.UnivOrbX, UnivOrbY = cfg.UnivOrbY, UnivOrbSize = cfg.UnivOrbSize, UnivRidges = cfg.UnivRidges, UnivParticle = cfg.UnivParticle,
+            BgBUnivHorizon = cfg.BgBUnivHorizon, BgBUnivGround = cfg.BgBUnivGround, BgBUnivOrb = cfg.BgBUnivOrb, BgBUnivOrbX = cfg.BgBUnivOrbX, BgBUnivOrbY = cfg.BgBUnivOrbY, BgBUnivOrbSize = cfg.BgBUnivOrbSize, BgBUnivRidges = cfg.BgBUnivRidges, BgBUnivParticle = cfg.BgBUnivParticle,
+            UnivCaustic = cfg.UnivCaustic, UnivShafts = cfg.UnivShafts,
+            BgBUnivCaustic = cfg.BgBUnivCaustic, BgBUnivShafts = cfg.BgBUnivShafts,
+            UnivPatBlend = cfg.UnivPatBlend, UnivPatStrength = cfg.UnivPatStrength,
+            BgBUnivPatBlend = cfg.BgBUnivPatBlend, BgBUnivPatStrength = cfg.BgBUnivPatStrength,
+            WetAmount = cfg.WetAmount, WetShine = cfg.WetShine, WetRough = cfg.WetRough, WetDeepen = cfg.WetDeepen, WetDroplets = cfg.WetDroplets, WetLightX = cfg.WetLightX, WetLightY = cfg.WetLightY, WetDepth = cfg.WetDepth,
+            WetHighlight = cfg.WetHighlight, WetFresnel = cfg.WetFresnel, WetDropSize = cfg.WetDropSize, WetDropDensity = cfg.WetDropDensity, WetDropTrail = cfg.WetDropTrail,
+            EnForeground = cfg.EnForegroundOn ? 1 : 0, FgPlaceMode = cfg.FgPlaceMode, FgPlaceSoft = cfg.FgPlaceSoft, FgPlaceSize = cfg.FgPlaceSize,
+            FgPlaceAngle = cfg.FgPlaceAngle, FgOpacity = cfg.FgOpacity, FgBlendMode = cfg.FgBlendMode, FgDepthGate = cfg.FgDepthGate,
+            FgSeamMode = cfg.FgSeamMode, FgSeamAngle = cfg.FgSeamAngle, FgSeamOffset = cfg.FgSeamOffset, FgSeamCx = cfg.FgSeamCx,
+            FgSeamCy = cfg.FgSeamCy, FgSeamRadius = cfg.FgSeamRadius, FgSeamEllipse = cfg.FgSeamEllipse, FgSeamDepthSplit = cfg.FgSeamDepthSplit,
+            FgSeamDepthRef = cfg.FgSeamDepthRef, FgSeamDepthBend = cfg.FgSeamDepthBend, FgSeamFeather = cfg.FgSeamFeather, FgSeamNoiseAmt = cfg.FgSeamNoiseAmt,
+            FgSeamNoiseScale = cfg.FgSeamNoiseScale, FgSeamMix = cfg.FgSeamMix, FgSeamMixLevel = cfg.FgSeamMixLevel, FgSeamMatch = cfg.FgSeamMatch,
+            GoboPattern = cfg.GoboPattern, GoboAmount = cfg.GoboAmount, GoboScale = cfg.GoboScale, GoboAngle = cfg.GoboAngle,
+            GoboSoft = cfg.GoboSoft, BeautyAmount = cfg.BeautyAmount, BeautyRadius = cfg.BeautyRadius, BeautyGlow = cfg.BeautyGlow,
+            SkinWarmth = cfg.SkinWarmth, SkinFlush = cfg.SkinFlush, SkinTintR = cfg.SkinTintR, SkinTintG = cfg.SkinTintG,
+            SkinTintB = cfg.SkinTintB, BacklightAmount = cfg.BacklightAmount, BacklightWidth = cfg.BacklightWidth, BacklightR = cfg.BacklightR,
+            BacklightG = cfg.BacklightG, BacklightB = cfg.BacklightB, SpotAmount = cfg.SpotAmount, SpotX = cfg.SpotX,
+            SpotY = cfg.SpotY, SpotRadius = cfg.SpotRadius, SpotEllipse = cfg.SpotEllipse, SpotSoft = cfg.SpotSoft,
+            SpotAngle = cfg.SpotAngle, SpotWarm = cfg.SpotWarm, ParticleType = cfg.ParticleType, ParticleAmount = cfg.ParticleAmount,
+            ParticleSize = cfg.ParticleSize, ParticleFall = cfg.ParticleFall, ParticleR = cfg.ParticleR, ParticleG = cfg.ParticleG,
+            ParticleB = cfg.ParticleB, BokehShape = cfg.BokehShape, BokehAmount = cfg.BokehAmount,
+            ParticleSoft = cfg.ParticleSoft, ParticleTumble = cfg.ParticleTumble,
+            ParticleBlend = cfg.ParticleSolid ? 1 : 0,
+            BokehDensity = cfg.BokehDensity, BokehRim = cfg.BokehRim,
+            BokehCatEye = cfg.BokehCatEye, BokehThreshold = cfg.BokehThreshold,
+            BokehBlades = cfg.BokehBlades, BokehRotate = cfg.BokehRotate,
+            BokehSource = cfg.BokehSource, BokehHueVar = cfg.BokehHueVar,
+            BokehR = cfg.BokehR, BokehG = cfg.BokehG, BokehB = cfg.BokehB,
+            Time = time,
+            Bypass = cfg.Bypass ? 1 : 0,
+        };
+        unsafe
+        {
+            for (int mi = 0; mi < PluginConfig.MaskCount; mi++)
+            {
+                int o = mi * 8, mode = cfg.MaskMode(mi);
+                p.MaskP[o] = mode; p.MaskP[o + 1] = cfg.MaskCx(mi); p.MaskP[o + 2] = cfg.MaskCy(mi); p.MaskP[o + 3] = cfg.MaskSize(mi);
+                p.MaskP[o + 4] = cfg.MaskEllipse(mi); p.MaskP[o + 5] = cfg.MaskAngle(mi);
+                p.MaskP[o + 6] = cfg.MaskFeather(mi); p.MaskP[o + 7] = cfg.MaskInvert(mi) ? 1f : 0f;
+                var (outR, outG, outB) = cfg.MaskOutColor(mi);
+                p.MaskF[o] = cfg.MaskFrame(mi) && mode != 0 ? 1f : 0f;
+                p.MaskF[o + 1] = cfg.MaskOutline(mi);
+                p.MaskF[o + 2] = outR; p.MaskF[o + 3] = outG; p.MaskF[o + 4] = outB;
+                p.MaskF[o + 5] = cfg.MaskFrameRank(mi);
+            }
+        }
+        if (cfg.EnElements)
+            unsafe { for (int k = 0; k < 8 * PluginConfig.ElemStride; k++) p.Elem[k] = cfg.Elem[k]; }
+        if (cfg.EnForegroundOn && cfg.FgField != null)
+            unsafe { int n = Math.Min(224, cfg.FgField.Length); for (int k = 0; k < n; k++) p.FgField[k] = cfg.FgField[k]; }
+        GateGroups(ref p, cfg);
+        return p;
     }
 
     private static float AspectRatio(int a) => a switch
@@ -619,15 +596,157 @@ public sealed class LiveOverlay : IDisposable
     private int _maskDrag;
     private Vector2 _maskGrab;
 
+    private readonly List<PluginConfig.MaskPose> _groupStart = new();
+    private Vector2 _groupCentre;
+    private const float GroupHandleReach = 0.16f;
+
+    private void DrawGroupPlacement(PluginConfig cfg, int[] group)
+    {
+        var vp = ImGui.GetMainViewport();
+        float W = vp.Size.X, H = vp.Size.Y;
+        float asp = (_capture is { Width: > 0, Height: > 0 })
+            ? (float)_capture.Width / _capture.Height
+            : (H > 0f ? W / H : 1f);
+        float kx = asp > 1e-4f ? W / asp : H, ky = H;
+
+        Vector2 GroupCentre()
+        {
+            float x = 0f, y = 0f;
+            foreach (var i in group) { x += cfg.MaskCx(i); y += cfg.MaskCy(i); }
+            return new Vector2(x / group.Length, y / group.Length);
+        }
+        Vector2 ToPx(Vector2 uv) => new(vp.Pos.X + uv.X * W, vp.Pos.Y + uv.Y * H);
+
+        Vector2 centre = ToPx(GroupCentre());
+        Vector2 handle = centre + new Vector2(0f, -GroupHandleReach * ky);
+
+        ImGui.SetNextWindowPos(vp.Pos);
+        ImGui.SetNextWindowSize(vp.Size);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
+        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0f, 0f, 0f, 0f));
+        bool begun = ImGui.Begin("##gps_mask_place",
+            ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize |
+            ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoBringToFrontOnFocus |
+            ImGuiWindowFlags.NoFocusOnAppearing | ImGuiWindowFlags.NoNav);
+        if (begun)
+        {
+            ImGui.InvisibleButton("##gps_mask_grab", vp.Size);
+            Vector2 mouse = ImGui.GetMousePos();
+
+            if (ImGui.IsItemActivated())
+            {
+                float d1 = Vector2.Distance(mouse, centre), d2 = Vector2.Distance(mouse, handle);
+                _maskDrag = (d2 <= 18f && d2 <= d1) ? 2 : 1;
+                _maskGrab = mouse;
+                _groupCentre = GroupCentre();
+                _groupStart.Clear();
+                foreach (var i in group) _groupStart.Add(cfg.PoseOf(i));
+            }
+            if (ImGui.IsItemActive() && _maskDrag != 0 && _groupStart.Count == group.Length)
+            {
+                if (_maskDrag == 1)
+                {
+                    cfg.MoveMaskGroup(group, _groupStart, _groupCentre.X, _groupCentre.Y,
+                                      (mouse.X - _maskGrab.X) / Math.Max(W, 1f), (mouse.Y - _maskGrab.Y) / Math.Max(H, 1f),
+                                      0f, 1f, asp);
+                }
+                else
+                {
+                    Vector2 c0 = ToPx(_groupCentre);
+                    float vx = (mouse.X - c0.X) / Math.Max(kx, 1f), vy = (mouse.Y - c0.Y) / Math.Max(ky, 1f);
+                    float turn = MathF.Atan2(vy, vx) - MathF.Atan2(-1f, 0f);
+                    float scale = Math.Clamp(MathF.Sqrt(vx * vx + vy * vy) / GroupHandleReach, 0.05f, 20f);
+                    cfg.MoveMaskGroup(group, _groupStart, _groupCentre.X, _groupCentre.Y, 0f, 0f, turn, scale, asp);
+                }
+            }
+            if (ImGui.IsItemDeactivated()) { _maskDrag = 0; cfg.Save(); }
+            if (ImGui.IsKeyPressed(ImGuiKey.Escape)) { cfg.PlacingMask = 0; _maskDrag = 0; }
+
+            centre = ToPx(GroupCentre());
+            handle = (_maskDrag == 2 && ImGui.IsItemActive()) ? mouse : centre + new Vector2(0f, -GroupHandleReach * ky);
+
+            var dl = ImGui.GetWindowDrawList();
+            uint line = ImGui.GetColorU32(new Vector4(0.35f, 1f, 0.55f, 0.95f));
+            uint dark = ImGui.GetColorU32(new Vector4(0f, 0f, 0f, 0.75f));
+            foreach (var i in group)
+                DrawMaskOutline(dl, cfg.MaskMode(i), ToPx(new Vector2(cfg.MaskCx(i), cfg.MaskCy(i))),
+                                cfg.MaskSize(i), cfg.MaskEllipse(i), cfg.MaskAngle(i), kx, ky, W + H, line, dark);
+            dl.AddLine(centre, handle, dark, 3.5f);
+            dl.AddLine(centre, handle, line, 1.5f);
+            foreach (var h in new[] { centre, handle })
+            {
+                dl.AddCircleFilled(h, 7.5f, dark);
+                dl.AddCircleFilled(h, 5f, line);
+            }
+
+            var letters = new System.Text.StringBuilder();
+            foreach (var i in group) { if (letters.Length > 0) letters.Append(", "); letters.Append(PluginConfig.MaskLetter(i)); }
+            string hint = $"Moving linked masks {letters} \u2014 drag anywhere to move them, the dot to turn and resize them together. Esc when done.";
+            var font = ImGui.GetFont();
+            var at = new Vector2(vp.Pos.X + 24f, vp.Pos.Y + 24f);
+            dl.AddText(font, 18f, at + new Vector2(1f, 1f), dark, hint);
+            dl.AddText(font, 18f, at, line, hint);
+        }
+        ImGui.End();
+        ImGui.PopStyleColor();
+        ImGui.PopStyleVar();
+    }
+
+    private static void DrawMaskOutline(ImDrawListPtr dl, int mode, Vector2 centre, float size, float ell, float ang,
+                                        float kx, float ky, float reach, uint line, uint dark)
+    {
+        float ca = MathF.Cos(ang), sa = MathF.Sin(ang);
+        Vector2 ToScreen(float lx, float ly) => centre + new Vector2((lx * ca - ly * sa) * kx, (lx * sa + ly * ca) * ky);
+        void Poly(Vector2[] pts)
+        {
+            for (int k = 0; k + 1 < pts.Length; k++) dl.AddLine(pts[k], pts[k + 1], dark, 3.5f);
+            for (int k = 0; k + 1 < pts.Length; k++) dl.AddLine(pts[k], pts[k + 1], line, 1.8f);
+        }
+        void Oval(float rad, float squash)
+        {
+            if (rad <= 1e-4f) return;
+            const int N = 72;
+            var pts = new Vector2[N + 1];
+            for (int k = 0; k <= N; k++)
+            {
+                float th = k * (MathF.Tau / N);
+                pts[k] = ToScreen(MathF.Cos(th) * rad, MathF.Sin(th) * rad * squash);
+            }
+            Poly(pts);
+        }
+        switch (mode)
+        {
+            case 1: Oval(size, ell); break;
+            case 5: Oval(size, 1f); Oval(size * Math.Clamp(ell, 0f, 0.95f), 1f); break;
+            case 4:
+            {
+                float hx = size, hy = size * ell;
+                Poly(new[] { ToScreen(-hx, -hy), ToScreen(hx, -hy), ToScreen(hx, hy), ToScreen(-hx, hy), ToScreen(-hx, -hy) });
+                break;
+            }
+            case 2:
+            {
+                Vector2 perp = new(-sa * kx, ca * ky);
+                perp = perp.Length() > 1e-4f ? perp / perp.Length() : new Vector2(0f, 1f);
+                dl.AddLine(centre - perp * reach, centre + perp * reach, dark, 3.5f);
+                dl.AddLine(centre - perp * reach, centre + perp * reach, line, 1.8f);
+                break;
+            }
+        }
+    }
+
     private void DrawMaskPlacement(PluginConfig cfg)
     {
         int m = cfg.PlacingMask;
-        if (m < 1 || m > 3) return;
+        if (m < 1 || m > PluginConfig.MaskCount) return;
         if (!_gate.IsActive) { cfg.PlacingMask = 0; return; }
 
         int mi = m - 1;
         int mode = cfg.MaskMode(mi);
-        if (mode == 0 || mode == 3) { cfg.PlacingMask = 0; return; }
+        if (!PluginConfig.MaskPlaceable(mode)) { cfg.PlacingMask = 0; return; }
+
+        var group = cfg.LinkedPlaceable(mi);
+        if (group.Length > 1) { DrawGroupPlacement(cfg, group); return; }
 
         float cx = cfg.MaskCx(mi), cy = cfg.MaskCy(mi), size = cfg.MaskSize(mi);
         float ell = cfg.MaskEllipse(mi), ang = cfg.MaskAngle(mi), feath = cfg.MaskFeather(mi);
@@ -640,6 +759,14 @@ public sealed class LiveOverlay : IDisposable
         float kx = asp > 1e-4f ? W / asp : H;
         float ky = H;
         Vector2 centre = new(vp.Pos.X + cx * W, vp.Pos.Y + cy * H);
+        Vector2 dir = new((float)Math.Cos(ang), (float)Math.Sin(ang));
+
+        Vector2 Handle2() => mode switch
+        {
+            1 or 4 => centre + new Vector2(-dir.Y * kx, dir.X * ky) * (size * ell),
+            5      => centre + new Vector2(-dir.Y * kx, dir.X * ky) * size,
+            _      => centre - new Vector2(dir.X * kx, dir.Y * ky) * 0.14f,
+        };
 
         ImGui.SetNextWindowPos(vp.Pos);
         ImGui.SetNextWindowSize(vp.Size);
@@ -654,10 +781,7 @@ public sealed class LiveOverlay : IDisposable
             ImGui.InvisibleButton("##gps_mask_grab", vp.Size);
 
             Vector2 mouse = ImGui.GetMousePos();
-            Vector2 dir = new((float)Math.Cos(ang), (float)Math.Sin(ang));
-            Vector2 handle2 = mode == 1
-                ? centre + new Vector2(-dir.Y * kx, dir.X * ky) * (size * ell)
-                : centre - new Vector2(dir.X * kx, dir.Y * ky) * 0.14f;
+            Vector2 handle2 = Handle2();
 
             if (ImGui.IsItemActivated())
             {
@@ -676,9 +800,14 @@ public sealed class LiveOverlay : IDisposable
                 else
                 {
                     Vector2 r = new((t.X - centre.X) / Math.Max(kx, 1f), (t.Y - centre.Y) / Math.Max(ky, 1f));
-                    if (mode == 1)
+                    if (mode == 1 || mode == 4)
                     {
                         size = Math.Clamp(r.Length() / Math.Max(ell, 0.05f), 0.01f, 1.5f);
+                        ang = (float)Math.Atan2(-r.X, r.Y);
+                    }
+                    else if (mode == 5)
+                    {
+                        size = Math.Clamp(r.Length(), 0.01f, 1.5f);
                         ang = (float)Math.Atan2(-r.X, r.Y);
                     }
                     else ang = (float)Math.Atan2(-r.Y, -r.X);
@@ -692,35 +821,59 @@ public sealed class LiveOverlay : IDisposable
 
             centre = new Vector2(vp.Pos.X + cx * W, vp.Pos.Y + cy * H);
             dir = new Vector2((float)Math.Cos(ang), (float)Math.Sin(ang));
-            handle2 = mode == 1
-                ? centre + new Vector2(-dir.Y * kx, dir.X * ky) * (size * ell)
-                : centre - new Vector2(dir.X * kx, dir.Y * ky) * 0.14f;
+            handle2 = Handle2();
 
             var dl = ImGui.GetWindowDrawList();
             uint line = ImGui.GetColorU32(new Vector4(0.35f, 1f, 0.55f, 0.95f));
             uint dark = ImGui.GetColorU32(new Vector4(0f, 0f, 0f, 0.75f));
             uint faint = ImGui.GetColorU32(new Vector4(0.35f, 1f, 0.55f, 0.40f));
             float f = Math.Max(feath, 1e-4f);
+            float ca = (float)Math.Cos(ang), sa = (float)Math.Sin(ang);
+            Vector2 ToScreen(float lx, float ly) => centre + new Vector2((lx * ca - ly * sa) * kx, (lx * sa + ly * ca) * ky);
+
+            void Poly(Vector2[] pts, uint col, float thick, bool halo)
+            {
+                if (halo) for (int k = 0; k + 1 < pts.Length; k++) dl.AddLine(pts[k], pts[k + 1], dark, thick + 1.7f);
+                for (int k = 0; k + 1 < pts.Length; k++) dl.AddLine(pts[k], pts[k + 1], col, thick);
+            }
+            void Oval(float rad, float squash, uint col, float thick, bool halo)
+            {
+                if (rad <= 1e-4f) return;
+                const int N = 96;
+                var pts = new Vector2[N + 1];
+                for (int k = 0; k <= N; k++)
+                {
+                    double th = k * (Math.PI * 2.0 / N);
+                    pts[k] = ToScreen((float)Math.Cos(th) * rad, (float)Math.Sin(th) * rad * squash);
+                }
+                Poly(pts, col, thick, halo);
+            }
+            void Box(float hx, float hy, uint col, float thick, bool halo)
+            {
+                if (hx <= 1e-4f || hy <= 1e-4f) return;
+                Poly(new[] { ToScreen(-hx, -hy), ToScreen(hx, -hy), ToScreen(hx, hy), ToScreen(-hx, hy), ToScreen(-hx, -hy) },
+                     col, thick, halo);
+            }
+
             if (mode == 1)
             {
-                void Ring(float rad, uint col, float thick, bool halo)
-                {
-                    if (rad <= 1e-4f) return;
-                    const int N = 96;
-                    var pts = new Vector2[N + 1];
-                    float ca = (float)Math.Cos(ang), sa = (float)Math.Sin(ang);
-                    for (int k = 0; k <= N; k++)
-                    {
-                        double th = k * (Math.PI * 2.0 / N);
-                        float ex = (float)Math.Cos(th) * rad, ey = (float)Math.Sin(th) * rad * ell;
-                        pts[k] = centre + new Vector2((ex * ca - ey * sa) * kx, (ex * sa + ey * ca) * ky);
-                    }
-                    if (halo) for (int k = 0; k < N; k++) dl.AddLine(pts[k], pts[k + 1], dark, thick + 1.7f);
-                    for (int k = 0; k < N; k++) dl.AddLine(pts[k], pts[k + 1], col, thick);
-                }
-                Ring(size + f, faint, 1.2f, false);
-                Ring(size - f, faint, 1.2f, false);
-                Ring(size, line, 1.8f, true);
+                Oval(size + f, ell, faint, 1.2f, false);
+                Oval(size - f, ell, faint, 1.2f, false);
+                Oval(size, ell, line, 1.8f, true);
+            }
+            else if (mode == 4)
+            {
+                Box(size + f, size * ell + f, faint, 1.2f, false);
+                Box(size - f, size * ell - f, faint, 1.2f, false);
+                Box(size, size * ell, line, 1.8f, true);
+            }
+            else if (mode == 5)
+            {
+                float inner = size * Math.Clamp(ell, 0f, 0.95f);
+                Oval(size, 1f, line, 1.8f, true);
+                if (inner > 1e-4f) Oval(inner, 1f, line, 1.8f, true);
+                Oval(size + f, 1f, faint, 1.2f, false);
+                if (inner > f) Oval(inner - f, 1f, faint, 1.2f, false);
             }
             else
             {
@@ -746,9 +899,9 @@ public sealed class LiveOverlay : IDisposable
             }
 
             var font = ImGui.GetFont();
-            string hint = mode == 1
-                ? $"Placing mask {(char)('A' + m - 1)} — drag the middle to move it, the edge dot to size and turn it. Esc when done."
-                : $"Placing mask {(char)('A' + m - 1)} — drag the middle to move the edge, the outer dot to aim it. Esc when done.";
+            string hint = mode == 2
+                ? $"Placing mask {(char)('A' + m - 1)} \u2014 drag the middle to move the edge, the outer dot to aim it. Esc when done."
+                : $"Placing mask {(char)('A' + m - 1)} \u2014 drag the middle to move it, the edge dot to size and turn it. Esc when done.";
             if (!cfg.DebugShowMask)
                 hint += "   (tick Show what this covers to see the fill)";
             var at = new Vector2(vp.Pos.X + 24f, vp.Pos.Y + 24f);
@@ -967,24 +1120,47 @@ public sealed class LiveOverlay : IDisposable
         var cap = _capture;
         if (cap is null) { done("No frame captured yet — enter gpose with live preview on."); return; }
         bool swap = cfg.SwapRedBlue;
+        _captureHolds++;
 
         _ = Task.Run(async () =>
         {
+            Vector3? dom = null;
+            string error = "";
             try
             {
                 var (spec, bytes) = await Services.TextureReadback.GetRawImageAsync(cap).ConfigureAwait(false);
-                var dom = DominantColor(spec.Width, spec.Height, bytes, swap);
-                ApplyPalette(cfg, dom);
-                cfg.Save();
-                int R = (int)(dom.X * 255), G = (int)(dom.Y * 255), B = (int)(dom.Z * 255);
-                done($"Grade suggested from character (#{R:X2}{G:X2}{B:X2}).");
+                dom = DominantColor(spec.Width, spec.Height, bytes, swap);
             }
             catch (Exception ex)
             {
                 Services.Log.Error(ex, "SuggestGrade failed");
-                done($"error: {ex.Message}");
+                error = $"error: {ex.Message}";
             }
+            _onRender.Enqueue(() =>
+            {
+                if (--_captureHolds == 0)
+                {
+                    foreach (var held in _heldCaptures) held.Dispose();
+                    _heldCaptures.Clear();
+                }
+                if (dom is not { } d) { done(error); return; }
+                ApplyPalette(cfg, d);
+                cfg.Save();
+                int R = (int)(d.X * 255), G = (int)(d.Y * 255), B = (int)(d.Z * 255);
+                done($"Grade suggested from character (#{R:X2}{G:X2}{B:X2}).");
+            });
         });
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentQueue<Action> _onRender = new();
+    private int _captureHolds;
+    private readonly List<IDalamudTextureWrap> _heldCaptures = new();
+
+    private void ReleaseCapture(IDalamudTextureWrap? wrap)
+    {
+        if (wrap == null) return;
+        if (_captureHolds > 0) _heldCaptures.Add(wrap);
+        else wrap.Dispose();
     }
 
     private static Vector3 DominantColor(int w, int h, byte[] px, bool swap)
@@ -1081,9 +1257,7 @@ public sealed class LiveOverlay : IDisposable
         if (!c.EnBacklight) p.BacklightAmount = 0f;
         if (!c.EnSpot) p.SpotAmount = 0f;
         if (!c.EnParticles) { p.ParticleAmount = 0f; p.BokehAmount = 0f; }
-#if PUBLIC_BUILD
         p.ParticleAmount = 0f; p.BokehAmount = 0f;
-#endif
     }
 
     private float _frozenAt;
@@ -1091,12 +1265,7 @@ public sealed class LiveOverlay : IDisposable
 
     private float AnimTime(PluginConfig cfg)
     {
-        bool animates =
-               ((cfg.EnBackdrop || cfg.BgBStyle > 0 || cfg.EnForegroundOn) && cfg.AnimSpeed > 0f)
-            || (cfg.EnHud && cfg.HudIntensity > 0f && (cfg.HudRadar > 0f || cfg.HudFlicker > 0f))
-            || (cfg.EnParticles && cfg.ParticleAmount > 0f)
-            || (cfg.EnElements && cfg.AnyElementAnimated());
-        if (!animates) { _wasFrozen = false; return 0f; }
+        if (!Animates(cfg)) { _wasFrozen = false; return 0f; }
 
         float now = (float)_animClock.Elapsed.TotalSeconds;
         if (cfg.FreezeAnimation)
@@ -1109,6 +1278,12 @@ public sealed class LiveOverlay : IDisposable
     }
 
     private float _animOffset;
+
+    private static bool Animates(PluginConfig cfg) =>
+           ((cfg.EnBackdrop || cfg.BgBStyle > 0 || cfg.EnForegroundOn) && cfg.AnimSpeed > 0f)
+        || (cfg.EnHud && cfg.HudIntensity > 0f && (cfg.HudRadar > 0f || cfg.HudFlicker > 0f))
+        || (cfg.EnParticles && cfg.ParticleAmount > 0f)
+        || (cfg.EnElements && cfg.AnyElementAnimated());
 
     private void StartCapture(uint viewportId)
     {
@@ -1232,10 +1407,261 @@ public sealed class LiveOverlay : IDisposable
         });
     }
 
+    private const int PieceSlots = 256;
+    private readonly GpuRenderer?[] _regionGpu = new GpuRenderer?[PieceSlots];
+    private readonly PluginConfig?[] _regionCfg = new PluginConfig?[PieceSlots];
+    private readonly string?[] _regionFrom = new string?[PieceSlots];
+    private readonly GpuRenderer.Params[] _regionBase = new GpuRenderer.Params[PieceSlots];
+    private readonly GpuRenderer.Params[] _regionParams = new GpuRenderer.Params[PieceSlots];
+    private readonly bool[] _regionHave = new bool[PieceSlots];
+    private readonly nint[] _regionOut = new nint[PieceSlots];
+    private readonly bool[] _regionAnim = new bool[PieceSlots];
+    private readonly float[] _regionMix = new float[PieceSlots];
+    private readonly int[] _regionOutside = new int[PieceSlots];
+    private readonly string?[]?[] _mergeFrom = new string?[PieceSlots][];
+    private readonly string?[] _mergeOut = new string?[PieceSlots];
+    private float _regionFrozenAt;
+    private bool _regionWasFrozen;
+
+    private static int PieceKey(int insideBits) => (insideBits >> 3) & 255;
+
+    private static List<MaskRegions.Piece> RegionPieces(PluginConfig cfg)
+    {
+        var active = new List<int>(3);
+        foreach (var i in cfg.MaskRegionStack()) if (cfg.MaskRegionActive(i)) active.Add(i);
+        return MaskRegions.PlanPieces(active, cfg.MaskRegionOverlap);
+    }
+
+    private string PieceOverrides(PluginConfig cfg, in MaskRegions.Piece piece, int key)
+    {
+        if (piece.Masks.Length == 1) return cfg.MaskOverrides(piece.Masks[0]);
+        var src = new string?[piece.Masks.Length];
+        for (int k = 0; k < src.Length; k++) src[k] = cfg.MaskOverrides(piece.Masks[k]);
+        var prev = _mergeFrom[key];
+        bool same = prev != null && prev.Length == src.Length && _mergeOut[key] != null;
+        for (int k = 0; same && k < src.Length; k++) same = ReferenceEquals(prev![k], src[k]);
+        if (!same) { _mergeFrom[key] = src; _mergeOut[key] = MaskRegions.Merge(src); }
+        return _mergeOut[key]!;
+    }
+
+    private static float PieceMix(PluginConfig cfg, in MaskRegions.Piece piece)
+    {
+        float sum = 0f;
+        foreach (var i in piece.Masks) sum += cfg.MaskRegionMix(i);
+        return sum / Math.Max(piece.Masks.Length, 1);
+    }
+
+    private void DrawRegions(PluginConfig cfg, in GpuRenderer.Params baseP, nint srcPtr, nint depthSrv, int w, int h,
+                             float depthScaleX, float depthScaleY, bool depthTrusted, nint[] memeSrvs, bool inputsMoved,
+                             Vector2 pos, Vector2 size)
+    {
+        bool suppressed = baseP.DebugView != 0 || baseP.Bypass != 0;
+        Span<bool> used = stackalloc bool[PieceSlots];
+        if (!suppressed)
+        {
+            foreach (var piece in RegionPieces(cfg))
+            {
+                int k = PieceKey(piece.Inside);
+                used[k] = true;
+                string ov = PieceOverrides(cfg, piece, k);
+                float mix = PieceMix(cfg, piece);
+                if (!_regionHave[k] || inputsMoved || _regionAnim[k] || !ReferenceEquals(ov, _regionFrom[k])
+                    || mix != _regionMix[k] || piece.Outside != _regionOutside[k] || !ParamsEqual(in baseP, in _regionBase[k]))
+                {
+                    var rc = _regionCfg[k] ??= new PluginConfig();
+                    MaskRegions.BuildVariant(cfg, ov, rc);
+                    _regionFrom[k] = ov;
+                    _regionBase[k] = baseP;
+                    _regionAnim[k] = Animates(rc);
+                    _regionMix[k] = mix;
+                    _regionOutside[k] = piece.Outside;
+                    var rp = RegionParams(rc, piece.Inside, piece.Outside, mix, in baseP, w, h, depthScaleX, depthScaleY, depthTrusted);
+                    if (!_regionHave[k] || inputsMoved || !ParamsEqual(in rp, in _regionParams[k]))
+                    {
+                        var gpu = _regionGpu[k] ??= new GpuRenderer(Services.PluginInterface.UiBuilder.DeviceHandle);
+                        nint o = gpu.Render(srcPtr, depthSrv, w, h, rp, memeSrvs);
+                        if (o == 0) { _regionHave[k] = false; continue; }
+                        _regionOut[k] = o;
+                        _regionParams[k] = rp;
+                        _regionHave[k] = true;
+                    }
+                }
+                if (_regionHave[k] && _regionOut[k] != 0)
+                    BlitOverGame(new ImTextureID(_regionOut[k]), pos, size, _gposeRects);
+            }
+        }
+        for (int k = 0; k < PieceSlots; k++) if (!used[k]) ReleaseRegion(k);
+    }
+
+    private GpuRenderer.Params RegionParams(PluginConfig rc, int inside, int outside, float mix, in GpuRenderer.Params baseP,
+                                            int w, int h, float depthScaleX, float depthScaleY, bool depthTrusted)
+    {
+        float t;
+        if (baseP.Time != 0f) t = baseP.Time;
+        else if (!Animates(rc)) t = 0f;
+        else
+        {
+            float now = (float)_animClock.Elapsed.TotalSeconds - _animOffset;
+            if (rc.FreezeAnimation)
+            {
+                if (!_regionWasFrozen) { _regionFrozenAt = now; _regionWasFrozen = true; }
+                t = _regionFrozenAt;
+            }
+            else { _regionWasFrozen = false; t = now; }
+        }
+        var rp = BuildParams(rc, w, h, depthScaleX, depthScaleY, depthTrusted, t);
+        rp.RegionMask = inside;
+        rp.RegionExclude = outside;
+        rp.RegionOpacity = Math.Clamp(mix, 0f, 1f);
+        rp.DebugView = 0;
+        rp.Cutout = 0;
+        rp.Bypass = 0;
+        return rp;
+    }
+
+    private void CompositeRegionsForExport(PluginConfig cfg, in GpuRenderer.Params exportP, int iw, int ih, byte[] rgba,
+                                           nint srcPtr, nint depthSrv, int w, int h, int scale,
+                                           float depthScaleX, float depthScaleY, bool depthTrusted, nint[] memeSrvs, bool cutout)
+    {
+        var gpu = _gpu;
+        if (gpu == null || exportP.Bypass != 0) return;
+        foreach (var piece in RegionPieces(cfg))
+        {
+            var rc = new PluginConfig();
+            MaskRegions.BuildVariant(cfg, PieceOverrides(cfg, piece, PieceKey(piece.Inside)), rc);
+            var rp = RegionParams(rc, piece.Inside, piece.Outside, PieceMix(cfg, piece), in exportP,
+                                  w, h, depthScaleX, depthScaleY, depthTrusted);
+            if (cutout && cfg.LiveMaskBits(cfg.ExportCutoutMasks) == 0) { rp.BgRecolor = 0f; rp.BgFill = 0f; }
+            if (gpu.Render(srcPtr, depthSrv, w * scale, h * scale, rp, memeSrvs, scale) == 0) continue;
+            var rr = gpu.ReadbackLastOutput();
+            if (rr is not { } reg || reg.Width != iw || reg.Height != ih) continue;
+            var src = reg.Rgba;
+            Parallel.For(0, ih, y =>
+            {
+                int row = y * iw * 4;
+                for (int x = 0; x < iw; x++)
+                {
+                    int o = row + x * 4;
+                    int al = src[o + 3];
+                    if (al == 0) continue;
+                    int ia = 255 - al;
+                    rgba[o]     = (byte)((rgba[o]     * ia + src[o]     * al + 127) / 255);
+                    rgba[o + 1] = (byte)((rgba[o + 1] * ia + src[o + 1] * al + 127) / 255);
+                    rgba[o + 2] = (byte)((rgba[o + 2] * ia + src[o + 2] * al + 127) / 255);
+                }
+            });
+        }
+    }
+
+    private void RemoveMasksFromExport(PluginConfig cfg, in GpuRenderer.Params exportP, int iw, int ih, byte[] rgba,
+                                       nint srcPtr, nint depthSrv, int w, int h, int scale, nint[] memeSrvs)
+    {
+        var gpu = _gpu;
+        int bits = cfg.LiveMaskBits(cfg.ExportExcludeMasks);
+        if (gpu == null || ZoneBits.MaskPart(bits) == 0) return;
+        var rp = exportP;
+        rp.Cutout = 0;
+        rp.Bypass = 0;
+        rp.DebugView = 0;
+        rp.RegionMask = bits;
+        rp.RegionExclude = 0;
+        rp.RegionOpacity = 1f;
+        if (gpu.Render(srcPtr, depthSrv, w * scale, h * scale, rp, memeSrvs, scale) == 0) return;
+        var rr = gpu.ReadbackLastOutput();
+        if (rr is not { } cover || cover.Width != iw || cover.Height != ih) return;
+        var coverage = cover.Rgba;
+        Parallel.For(0, ih, y =>
+        {
+            int row = y * iw * 4;
+            for (int x = 0; x < iw; x++)
+            {
+                int o = row + x * 4 + 3;
+                int c = coverage[o];
+                if (c == 0) continue;
+                rgba[o] = (byte)((rgba[o] * (255 - c) + 127) / 255);
+            }
+        });
+    }
+
+    private void ReleaseRegion(int k)
+    {
+        if (_regionGpu[k] == null && !_regionHave[k]) return;
+        _regionGpu[k]?.Dispose();
+        _regionGpu[k] = null;
+        _regionHave[k] = false;
+        _regionOut[k] = 0;
+        _regionFrom[k] = null;
+        _regionAnim[k] = false;
+        _regionOutside[k] = 0;
+        _mergeFrom[k] = null;
+        _mergeOut[k] = null;
+    }
+
+    private void ReleaseRegions() { for (int k = 0; k < PieceSlots; k++) ReleaseRegion(k); }
+
+    private void ExportFrame(PluginConfig cfg, GpuRenderer.Params p, nint srcPtr, nint depthSrv, int w, int h,
+                             float depthScaleX, float depthScaleY, bool depthTrusted, nint[] memeSrvs)
+    {
+        _exportPending = false;
+        var gpu = _gpu;
+        if (gpu == null) return;
+        bool jpegOut = Plugin.Config.ExportFormat == 1;
+        var dir = _exportDir;
+        var done = _exportDone;
+
+        bool debugWasOn = p.DebugView != 0;
+        if (debugWasOn) p.DebugView = 0;
+
+        bool cutout = Plugin.Config.ExportTransparent && !jpegOut;
+        if (cutout)
+        {
+            p.Cutout = 1;
+            if (Plugin.Config.LiveMaskBits(Plugin.Config.ExportCutoutMasks) == 0)
+            {
+                p.BgRecolor = 0f;
+                p.BgFill = 0f;
+            }
+        }
+
+        int scale = Math.Clamp(Plugin.Config.ExportScale, 1, 4);
+        while (scale > 1 && ((long)w * scale > 16384 || (long)h * scale > 16384)) scale >>= 1;
+
+        if (gpu.Render(srcPtr, depthSrv, w * scale, h * scale, p, memeSrvs, scale) == 0)
+        {
+            done?.Invoke("error: the export render failed");
+            _haveRender = false; _lastOutSrv = 0; _lastDepthSrv = 0;
+            return;
+        }
+
+        var rb = gpu.ReadbackLastOutput();
+        if (rb is { } img)
+        {
+            CompositeRegionsForExport(cfg, in p, img.Width, img.Height, img.Rgba, srcPtr, depthSrv, w, h, scale,
+                                      depthScaleX, depthScaleY, depthTrusted, memeSrvs, cutout);
+            if (cutout) RemoveMasksFromExport(cfg, in p, img.Width, img.Height, img.Rgba, srcPtr, depthSrv, w, h, scale, memeSrvs);
+            if (!cutout && IsEffectivelyBlack(img.Rgba))
+                done?.Invoke("warning: the exported image is black. Change any control to force a re-render, then export again.");
+
+            var (cw, ch, crgba) = CropForExport(img.Width, img.Height, img.Rgba, Plugin.Config.ExportAspect);
+            if (Plugin.Config.ShowGuides)
+                BurnGuidesInto(crgba, cw, ch, Plugin.Config, scale);
+            if (Plugin.Config.EnText && Plugin.Config.Texts is { Count: > 0 })
+            {
+                var (tx0, ty0, tx1, ty1) = CropFrac(Plugin.Config.ExportAspect, (float)img.Width / img.Height);
+                TextRender.Compose(crgba, cw, ch, SnapshotTexts(Plugin.Config), tx0, ty0, tx1, ty1);
+            }
+            SaveImageAsync(cw, ch, crgba, dir, done);
+        }
+        else done?.Invoke("error: GPU readback failed");
+
+        _haveRender = false; _lastOutSrv = 0; _lastDepthSrv = 0;
+        if (scale > 1) _captureChanged = true;
+    }
+
     private void Teardown()
     {
         DepthAvailable = false;
-        _capture?.Dispose();
+        ReleaseCapture(_capture);
         _capture = null;
         var staged = Interlocked.Exchange(ref _incoming, null);
         staged?.Dispose();
@@ -1248,6 +1674,7 @@ public sealed class LiveOverlay : IDisposable
         _captureStartedAt = 0;
         _depthSeenSrv = 0;
         _depthSettled = 0;
+        ReleaseRegions();
     }
 
     public void Dispose()
@@ -1257,6 +1684,8 @@ public sealed class LiveOverlay : IDisposable
         Services.Framework.Update -= OnFrameworkUpdate;
         DisposeTextCache();
         Teardown();
+        foreach (var held in _heldCaptures) held.Dispose();
+        _heldCaptures.Clear();
         _gpu?.Dispose();
         _gpu = null;
     }

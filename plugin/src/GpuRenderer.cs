@@ -239,12 +239,7 @@ public sealed class GpuRenderer : IDisposable
         public int EnFinal; public float FinalExposure; public float FinalContrast; public float FinalSat;
         public float FinalTemp; public float FinalLift; public float FinalGamma; public float FinalGain;
         public int Cutout; public float CutoutFeather; public float CutoutShrink; public float CutoutPad;
-        public int MaskAMode; public float MaskACx; public float MaskACy; public float MaskASize;
-        public float MaskAEllipse; public float MaskAAngle; public float MaskAFeather; public int MaskAInvert;
-        public int MaskBMode; public float MaskBCx; public float MaskBCy; public float MaskBSize;
-        public float MaskBEllipse; public float MaskBAngle; public float MaskBFeather; public int MaskBInvert;
-        public int MaskCMode; public float MaskCCx; public float MaskCCy; public float MaskCSize;
-        public float MaskCEllipse; public float MaskCAngle; public float MaskCFeather; public int MaskCInvert;
+        public fixed float MaskP[64];
         public int MaskShow; public int GradeMask; public float MaskPad0; public float MaskPad1;
         public int ZoneBgFill; public int ZoneBackdrop; public int ZoneFog; public int ZoneGlow;
         public int ZoneFinal; public int ZonePad4; public int ZonePad5; public int ZonePad6;
@@ -252,6 +247,10 @@ public sealed class GpuRenderer : IDisposable
         public float BokehRim; public float BokehCatEye; public float BokehThreshold; public float ParticlePad0;
         public float BokehBlades; public float BokehRotate; public int BokehSource; public float BokehHueVar;
         public float BokehR; public float BokehG; public float BokehB; public float BokehPad0;
+        public fixed float MaskF[64];
+        public int FrameBreakOut; public int CutoutMasks; public int CutoutSubject; public int FrameFlags;
+        public float FrameFillR; public float FrameFillG; public float FrameFillB; public float FrameFillA;
+        public int RegionMask; public float RegionOpacity; public int RegionExclude; public float FramePad1;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -429,12 +428,7 @@ cbuffer P : register(b0) {
     int enFinal; float finalExposure; float finalContrast; float finalSat;
     float finalTemp; float finalLift; float finalGamma; float finalGain;
     int cutout; float cutoutFeather; float cutoutShrink; float cutoutPad;
-    int maskAMode; float maskACx; float maskACy; float maskASize;
-    float maskAEllipse; float maskAAngle; float maskAFeather; int maskAInvert;
-    int maskBMode; float maskBCx; float maskBCy; float maskBSize;
-    float maskBEllipse; float maskBAngle; float maskBFeather; int maskBInvert;
-    int maskCMode; float maskCCx; float maskCCy; float maskCSize;
-    float maskCEllipse; float maskCAngle; float maskCFeather; int maskCInvert;
+    float4 maskP[16];
     int maskShow; int gradeMask; float maskPad0; float maskPad1;
     int zoneBgFill; int zoneBackdrop; int zoneFog; int zoneGlow;
     int zoneFinal; int zonePad4; int zonePad5; int zonePad6;
@@ -442,6 +436,10 @@ cbuffer P : register(b0) {
     float bokehRim; float bokehCatEye; float bokehThreshold; float particlePad0;
     float bokehBlades; float bokehRotate; int bokehSource; float bokehHueVar;
     float bokehR; float bokehG; float bokehB; float bokehPad0;
+    float4 maskF[16];
+    int frameBreakOut; int cutoutMasks; int cutoutSubject; int frameFlags;
+    float frameFillR; float frameFillG; float frameFillB; float frameFillA;
+    int regionMask; float regionOpacity; int regionExclude; float framePad1;
 };
 Texture2D colorTex : register(t0);
 Texture2D depthTex : register(t1);
@@ -562,37 +560,99 @@ float RimSide(float2 uv, float asp) {
     return smoothstep(-f, f, sd);
 }
 
-float MaskShape(int mode, float2 uv, float lin, float asp,
+float3 MaskHsv(float3 c) {
+    float4 K = float4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
+    float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
+    float d = q.x - min(q.w, q.y);
+    return float3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
+}
+
+float2 MaskSD(int mode, float2 uv, float lin, float asp, float3 src,
+              float cx, float cy, float size, float ell, float ang) {
+    float2 d = uv - float2(cx, cy);
+    d.x *= asp;
+    float ca = cos(ang), sa = sin(ang);
+    float2 r = float2(d.x * ca + d.y * sa, -d.x * sa + d.y * ca);
+
+    if (mode == 1) {
+        float2 e = float2(r.x, r.y / max(ell, 0.05));
+        return float2(max(size, 1e-4) - length(e), 1.0);
+    }
+    if (mode == 2) return float2(-dot(d, float2(ca, sa)), 1.0);
+    if (mode == 4) {
+        float2 q = abs(r) - float2(max(size, 1e-4), max(size * ell, 1e-4));
+        float outside = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+        return float2(-outside, 1.0);
+    }
+    if (mode == 5) {
+        float rr = length(r);
+        float outer = max(size, 1e-4), inner = outer * saturate(ell);
+        return float2(min(outer - rr, rr - inner), 1.0);
+    }
+    if (mode == 6) return float2(max(size, 1e-4) - abs(Luma(src) - cy), 1.0);
+    if (mode == 7) {
+        float3 hsv = MaskHsv(saturate(src));
+        float dh = abs(frac(hsv.x - cx + 0.5) - 0.5);
+        float gate = smoothstep(ell * 0.5, max(ell, 1e-3), hsv.y);
+        return float2(max(size, 1e-4) - dh, gate);
+    }
+    if (mode == 8) return float2(bgRecolorStart - lin, 1.0);
+    return float2(max(size, 1e-4) - abs(lin - cy), 1.0);
+}
+
+float MaskShape(int mode, float2 uv, float lin, float asp, float3 src,
                 float cx, float cy, float size, float ell, float ang, float feath, int inv) {
     if (mode == 0) return 1.0;
-    float s;
-    if (mode == 1) {
-        float2 d = uv - float2(cx, cy);
-        d.x *= asp;
-        float ca = cos(ang), sa = sin(ang);
-        d = float2(d.x * ca + d.y * sa, -d.x * sa + d.y * ca);
-        d.y /= max(ell, 0.05);
-        s = max(size, 1e-4) - length(d);
-    } else if (mode == 2) {
-        float2 d = uv - float2(cx, cy);
-        d.x *= asp;
-        s = -dot(d, float2(cos(ang), sin(ang)));
-    } else {
-        if (hasDepth == 0) return 1.0;
-        s = max(size, 1e-4) - abs(lin - cy);
-    }
-    float m = smoothstep(-max(feath, 1e-4), max(feath, 1e-4), s);
+    if ((mode == 3 || mode == 8) && hasDepth == 0) return 1.0;
+    float2 sg = MaskSD(mode, uv, lin, asp, src, cx, cy, size, ell, ang);
+    float m = smoothstep(-max(feath, 1e-4), max(feath, 1e-4), sg.x) * sg.y;
     return (inv != 0) ? (1.0 - m) : m;
 }
 
-static float3 gMaskW = float3(1.0, 1.0, 1.0);
+float MaskEdgeSD(int mode, float2 uv, float lin, float asp, float3 src,
+                 float cx, float cy, float size, float ell, float ang) {
+    float s = MaskSD(mode, uv, lin, asp, src, cx, cy, size, ell, ang).x;
+    if (mode != 1) return s;
+    float2 d = uv - float2(cx, cy);
+    d.x *= asp;
+    float ca = cos(ang), sa = sin(ang);
+    float2 r = float2(d.x * ca + d.y * sa, -d.x * sa + d.y * ca);
+    float k = 1.0 / max(ell, 0.05);
+    float2 e = float2(r.x, r.y * k);
+    float g = length(float2(e.x, e.y * k)) / max(length(e), 1e-5);
+    return s / max(g, 1e-3);
+}
+
+static float gMaskW[8] = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
+static float gMaskSD[8] = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
+
+int MaskModeOf(int k) { return (int)(maskP[k * 2].x + 0.5); }
 
 float MaskFor(int bits) {
-    float m = 1.0;
-    if ((bits & 8) != 0) m *= gMaskW.x;
-    if ((bits & 16) != 0) m *= gMaskW.y;
-    if ((bits & 32) != 0) m *= gMaskW.z;
-    return m;
+    int used = (bits >> 3) & 255;
+    if (used == 0) return 1.0;
+    int mode = (bits >> 11) & 3;
+    if (mode == 0) {
+        float m = 1.0;
+        [loop] for (int k = 0; k < 8; k++)
+            if (((used >> k) & 1) != 0) m *= gMaskW[k];
+        return m;
+    }
+    float none = 1.0, one = 0.0, first = 1.0, rest = 1.0;
+    bool haveFirst = false;
+    [loop] for (int j = 0; j < 8; j++) {
+        if (((used >> j) & 1) == 0 || MaskModeOf(j) == 0) continue;
+        float w = gMaskW[j];
+        one = one * (1.0 - w) + none * w;
+        none *= 1.0 - w;
+        if (haveFirst) rest *= 1.0 - w;
+        else { first = w; haveFirst = true; }
+    }
+    if (!haveFirst) return 1.0;
+    if (mode == 1) return 1.0 - none;
+    if (mode == 2) return one;
+    return first * rest;
 }
 
 float ZoneMask(int bits, float lin, float split, float soft) {
@@ -2134,7 +2194,7 @@ BgResult EvalBackdrop(float2 baseUv, BgParams bgp, float asp) {
         }
 
         if (bgp.univShafts > 0.0) {
-            float2 src = float2((bgp.univOrb > 0 ? bgp.univOrbX : 0.5) - 0.5, (bgp.univOrb > 0 ? bgp.univOrbY : 0.0)) * float2(asp, 1.0);
+            float2 src = float2((bgp.univOrb > 0 ? bgp.univOrbX : 0.5) - 0.5, bgp.univOrb > 0 ? 0.5 - bgp.univOrbY : 0.5) * float2(asp, 1.0);
             float2 d2 = pc - src;
             float ang = atan2(d2.x, d2.y + 0.001);
             float beams = pow(0.5 + 0.5 * sin(ang * 22.0 + Fbm(float2(ang * 3.0, tA * 0.2), 3) * 4.0), 3.0);
@@ -2374,6 +2434,28 @@ BgResult EvalBackdrop(float2 baseUv, BgParams bgp, float asp) {
     return r;
 }
 
+float3 Starfield(float2 sp, float density, float size, float sparkle, float3 tint) {
+    float dens = max(density, 4.0);
+    float3 star = float3(0.0, 0.0, 0.0);
+    [unroll] for (int li = 0; li < 2; li++) {
+        float2 gs = sp * dens * (li == 0 ? 1.0 : 2.3);
+        float2 cell = floor(gs);
+        float h = Hash21(cell + float2(li * 19.0, li * 7.0));
+        float bright = frac(h * 91.7);
+        float2 jit = float2(Hash21(cell + 4.3), Hash21(cell + 8.9));
+        float2 fc = frac(gs) - clamp(jit, 0.18, 0.82);
+        float sz = lerp(0.05, 0.34, saturate(size)) * (0.4 + 0.6 * bright);
+        float st = smoothstep(sz, 0.0, length(fc)) * step(0.86, h) * (0.4 + 0.6 * bright);
+        if (sparkle > 0.0 && h > 0.93) {
+            float spikeX = smoothstep(sz * 5.0, 0.0, length(float2(fc.x, fc.y * 7.0)));
+            float spikeY = smoothstep(sz * 5.0, 0.0, length(float2(fc.x * 7.0, fc.y)));
+            st += (spikeX + spikeY) * sparkle * (0.3 + 0.7 * bright);
+        }
+        star += tint * st;
+    }
+    return star;
+}
+
 float4 PS(VSOut i) : SV_Target {
     float2 suv = float2(i.uv.x, 1.0 - i.uv.y);
     float asp = texelX > 0.0 ? texelY / texelX : 1.0;
@@ -2393,13 +2475,27 @@ float4 PS(VSOut i) : SV_Target {
 
     float lin = (hasDepth != 0) ? Linearize(duv) : 0.0;
 
-    gMaskW = float3(
-        MaskShape(maskAMode, suv, lin, asp, maskACx, maskACy, maskASize, maskAEllipse, maskAAngle, maskAFeather, maskAInvert),
-        MaskShape(maskBMode, suv, lin, asp, maskBCx, maskBCy, maskBSize, maskBEllipse, maskBAngle, maskBFeather, maskBInvert),
-        MaskShape(maskCMode, suv, lin, asp, maskCCx, maskCCy, maskCSize, maskCEllipse, maskCAngle, maskCFeather, maskCInvert));
+    float3 msrc = float3(0.0, 0.0, 0.0);
+    bool maskNeedsSrc = false;
+    [loop] for (int mq = 0; mq < 8; mq++) {
+        int mdq = MaskModeOf(mq);
+        if (mdq == 6 || mdq == 7) maskNeedsSrc = true;
+    }
+    if (maskNeedsSrc) {
+        msrc = colorTex.SampleLevel(samp, cuv, 0).rgb;
+        if (swapRB != 0) msrc = msrc.bgr;
+    }
+    [loop] for (int mk = 0; mk < 8; mk++) {
+        float4 m0 = maskP[mk * 2];
+        float4 m1 = maskP[mk * 2 + 1];
+        int mdk = (int)(m0.x + 0.5);
+        gMaskW[mk] = MaskShape(mdk, suv, lin, asp, msrc, m0.y, m0.z, m0.w, m1.x, m1.y, m1.z, (int)(m1.w + 0.5));
+        if (maskF[mk * 2].x > 0.5)
+            gMaskSD[mk] = MaskEdgeSD(mdk, suv, lin, asp, msrc, m0.y, m0.z, m0.w, m1.x, m1.y);
+    }
 
     if (debugView == 5) {
-        float w = (maskShow == 2) ? gMaskW.y : ((maskShow == 3) ? gMaskW.z : gMaskW.x);
+        float w = gMaskW[clamp(maskShow, 1, 8) - 1];
         float3 sc = colorTex.SampleLevel(samp, cuv, 0).rgb;
         float g = dot(sc, float3(0.299, 0.587, 0.114)) * 0.40;
         float3 o = lerp(float3(g, g, g), float3(0.30, 1.00, 0.45), saturate(w) * 0.80);
@@ -2693,53 +2789,38 @@ float4 PS(VSOut i) : SV_Target {
         }
 
         float3 col4 = float3(bgCol4R, bgCol4G, bgCol4B);
-        float nebGate = lerp((bgStyle == 13 || bgStyle == 14) ? 1.0 : 0.0,
-                             (bgBStyle == 13 || bgBStyle == 14) ? 1.0 : 0.0, wB);
-        if (bgHueVar > 0.0 && nebGate > 0.0) {
+        float3 col4B = float3(bgBCol4R, bgBCol4G, bgBCol4B);
+        float hueVar = lerp((bgStyle == 13 || bgStyle == 14) ? bgHueVar : 0.0,
+                            (bgBStyle == 13 || bgBStyle == 14) ? bgBHueVar : 0.0, wB);
+        if (hueVar > 0.0) {
             float hv = VNoise(uv * sc * 0.7 + 11.0) - 0.5;
-            pat = HueShift(pat, hv * bgHueVar * 0.3 * nebGate);
+            pat = HueShift(pat, hv * hueVar * 0.3);
         }
-        if (bgHaze > 0.0) {
-            float hz = Fbm(uv * sc * 0.25 + 3.7, 3);
-            pat += col4 * smoothstep(0.4, 0.85, hz) * bgHaze * 0.7;
+        if (bgHaze > 0.0 || bgBHaze * wB > 0.0) {
+            float hz = smoothstep(0.4, 0.85, Fbm(uv * sc * 0.25 + 3.7, 3));
+            pat += lerp(col4 * bgHaze, col4B * bgBHaze, wB) * hz * 0.7;
         }
-        if (bgGlow > 0.0) {
+        if (bgGlow > 0.0 || bgBGlow * wB > 0.0) {
             float b = smoothstep(0.35, 0.85, Luma(pat));
-            pat += lerp(pat, col4, 0.5) * b * bgGlow * 1.5;
+            pat += lerp(lerp(pat, col4, 0.5) * bgGlow, lerp(pat, col4B, 0.5) * bgBGlow, wB) * b * 1.5;
         }
-        float sky15 = lerp((bgStyle == 15) ? 1.0 : 0.0, (bgBStyle == 15) ? 1.0 : 0.0, wB);
-        if (bgStars > 0.0 || sky15 > 0.0) {
-            float amt = (bgStars <= 0.0) ? sky15 : bgStars;
-            float2 sp = float2(i.uv.x * asp, i.uv.y);
-            float dens = max(bgStarDensity, 4.0);
-            float3 star = float3(0.0, 0.0, 0.0);
-            [unroll] for (int li = 0; li < 2; li++) {
-                float2 gs = sp * dens * (li == 0 ? 1.0 : 2.3);
-                float2 cell = floor(gs);
-                float h = Hash21(cell + float2(li * 19.0, li * 7.0));
-                float bright = frac(h * 91.7);
-                float2 jit = float2(Hash21(cell + 4.3), Hash21(cell + 8.9));
-                float2 fc = frac(gs) - clamp(jit, 0.18, 0.82);
-                float sz = lerp(0.05, 0.34, saturate(bgStarSize)) * (0.4 + 0.6 * bright);
-                float s = smoothstep(sz, 0.0, length(fc)) * step(0.86, h) * (0.4 + 0.6 * bright);
-                if (bgSparkle > 0.0 && h > 0.93) {
-                    float spikeX = smoothstep(sz * 5.0, 0.0, length(float2(fc.x, fc.y * 7.0)));
-                    float spikeY = smoothstep(sz * 5.0, 0.0, length(float2(fc.x * 7.0, fc.y)));
-                    s += (spikeX + spikeY) * bgSparkle * (0.3 + 0.7 * bright);
-                }
-                star += col4 * s;
-            }
-            pat += star * amt * 1.5;
-        }
-        if (bgEmbers > 0.0) {
+        float starA = (bgStars > 0.0) ? bgStars : ((bgStyle == 15) ? 1.0 : 0.0);
+        float starB = (bgBStars > 0.0) ? bgBStars : ((bgBStyle == 15) ? 1.0 : 0.0);
+        float2 starUv = float2(i.uv.x * asp, i.uv.y);
+        if (starA > 0.0 && wB < 0.999)
+            pat += Starfield(starUv, bgStarDensity, bgStarSize, bgSparkle, col4) * starA * (1.0 - wB) * 1.5;
+        if (starB > 0.0 && wB > 0.001)
+            pat += Starfield(starUv, bgBStarDensity, bgBStarSize, bgBSparkle, col4B) * starB * wB * 1.5;
+        if (bgEmbers > 0.0 || bgBEmbers * wB > 0.0) {
             float2 ep = float2(i.uv.x * asp, i.uv.y) * 18.0;
             float2 ec = floor(ep);
             float eh = Hash21(ec + 55.3);
             if (eh > 0.7) {
                 float2 jit = 0.3 + 0.4 * float2(Hash21(ec + 1.7), Hash21(ec + 9.1));
                 float d2 = dot(frac(ep) - jit, frac(ep) - jit);
-                float k = lerp(90.0, 22.0, saturate(bgEmberSize));
-                pat += col4 * exp(-d2 * k) * frac(eh * 37.0) * bgEmbers * 0.6;
+                float moteA = exp(-d2 * lerp(90.0, 22.0, saturate(bgEmberSize))) * bgEmbers;
+                float moteB = exp(-d2 * lerp(90.0, 22.0, saturate(bgBEmberSize))) * bgBEmbers;
+                pat += lerp(col4 * moteA, col4B * moteB, wB) * frac(eh * 37.0) * 0.6;
             }
         }
         if (bgVignette > 0.0) {
@@ -3338,7 +3419,7 @@ float4 PS(VSOut i) : SV_Target {
         float einten = ecol.w;
         if (etype == 0 || abs(einten) <= 0.001) continue;
         float emask = (ef.y > 0.5 || hasDepth == 0) ? 1.0 : smoothstep(bgRecolorStart, bgRecolorStart + max(bgRecolorFeather, 0.003), lin);
-        emask *= MaskFor(((eflags >> 4) & 7) << 3);
+        emask *= MaskFor((((eflags >> 4) & 255) << 3) | (((eflags >> 12) & 3) << 11));
         if (emask <= 0.001) continue;
         float2 Pe = i.uv - float2(0.5 + ea.y, 0.5 + ea.z); Pe.x *= asp;
         float erot = eb.y + time * eb.z;
@@ -3445,7 +3526,7 @@ float4 PS(VSOut i) : SV_Target {
         if (a > 0.001) {
             float3 fgA3 = float3(0.0, 0.0, 0.0), fgB3 = float3(0.0, 0.0, 0.0);
             float2 fgUv = float2(0.0, 0.0), fgSc = float2(1.0, 1.0);
-            int nfg = ((int)FG(89 + 6) > 0) ? 2 : 1;
+            int nfg = ((int)FG(111 + 6) > 0) ? 2 : 1;
             [loop] for (int ffi = 0; ffi < nfg; ffi++) {
                 BgResult fr = EvalBackdrop(i.uv, MakeFg(ffi), asp);
                 if (ffi == 0) { fgA3 = fr.pat; fgUv = fr.uv; fgSc = fr.sc; } else fgB3 = fr.pat;
@@ -3659,11 +3740,60 @@ float4 PS(VSOut i) : SV_Target {
         if (i.uv.y < bar || i.uv.y > 1.0 - bar) c = float3(0.0, 0.0, 0.0);
     }
 
-    float outA = 1.0;
-    if (cutout != 0 && hasDepth != 0) {
+    float subjMatte = 1.0;
+    if (hasDepth != 0) {
         float start = bgRecolorStart + cutoutShrink * 0.05;
         float soft = max(bgRecolorFeather, 0.003) + cutoutFeather * 0.05;
-        outA = 1.0 - smoothstep(start, start + soft, lin);
+        subjMatte = 1.0 - smoothstep(start, start + soft, lin);
+    }
+
+    int anyFrame = 0;
+    float frameKeep = 0.0;
+    [loop] for (int fa = 0; fa < 8; fa++) {
+        if (maskF[fa * 2].x > 0.5) { anyFrame = 1; frameKeep = max(frameKeep, gMaskW[fa]); }
+    }
+    float frameVis = 1.0;
+    if (anyFrame != 0) {
+        float front = (frameBreakOut != 0 && hasDepth != 0) ? subjMatte : 0.0;
+        frameVis = max(frameKeep, front);
+        float lineUnder = 0.0;
+        if (hasDepth != 0) {
+            if (frameBreakOut != 0) lineUnder = subjMatte;
+            else if ((frameFlags & 2) != 0) lineUnder = subjMatte * frameKeep;
+        }
+        c = lerp(c, float3(frameFillR, frameFillG, frameFillB), (1.0 - frameVis) * saturate(frameFillA));
+
+        float aa = max(texelY, 1e-4) * 1.2;
+        float behind = 1.0 - lineUnder;
+        [loop] for (int fo = 0; fo < 8; fo++) {
+            float4 f0 = maskF[fo * 2];
+            int mdo = MaskModeOf(fo);
+            if (f0.x > 0.5 && f0.y > 0.0 && (mdo == 1 || mdo == 2 || mdo == 4 || mdo == 5)) {
+                float ln = 1.0 - smoothstep(f0.y * 0.5, f0.y * 0.5 + aa, abs(gMaskSD[fo]));
+                if ((frameFlags & 1) != 0) {
+                    float rankO = maskF[fo * 2 + 1].y;
+                    [loop] for (int fu = 0; fu < 8; fu++) {
+                        if (fu != fo && maskF[fu * 2].x > 0.5 && maskF[fu * 2 + 1].y > rankO)
+                            ln *= 1.0 - gMaskW[fu];
+                    }
+                }
+                c = lerp(c, float3(f0.z, f0.w, maskF[fo * 2 + 1].x), ln * behind);
+            }
+        }
+    }
+
+    float outA = 1.0;
+    if (cutout != 0) {
+        if (((cutoutMasks >> 3) & 255) != 0) {
+            outA = MaskFor(cutoutMasks);
+            if (cutoutSubject != 0 && hasDepth != 0) outA = max(outA, subjMatte);
+        }
+        else if (anyFrame != 0) outA = frameVis;
+        else if (hasDepth != 0) outA = subjMatte;
+    }
+    if (regionMask != 0) {
+        outA = saturate(MaskFor(regionMask) * regionOpacity);
+        if (regionExclude != 0) outA *= 1.0 - MaskFor(regionExclude | 2048);
     }
 
     if (debugView == 4) {
@@ -3963,49 +4093,59 @@ float4 HaloMaskPS(VSOut i) : SV_Target {
         var oldRtvs = new ID3D11RenderTargetView[1];
         c.OMGetRenderTargets(1, oldRtvs, out var oldDsv);
         var oldViewports = c.RSGetViewports<Viewport>().ToArray();
+        var oldBlend = c.OMGetBlendState(out Color4 oldBlendFactor, out uint oldSampleMask);
 
-        c.RSSetState(_raster);
-        c.OMSetDepthStencilState(_depthOff, 0);
-        c.VSSetShader(_vs);
-        c.PSSetSampler(0, _sampler);
-        c.IASetInputLayout(null);
-        c.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
+        try
+        {
+            c.OMSetBlendState(null!);
 
-        bool bloom = p.BloomAmount > 0f || p.Halation > 0f;
-        bool godray = p.GodrayAmount > 0f;
-        bool fullblur = p.BgBlur > 0f || p.Orton > 0f || p.Glamour > 0f || p.Clarity > 0f || p.TiltAmt > 0f;
-        bool anam = p.AnamAmount > 0f;
-        bool halo = p.HaloAmount > 0f && depthSrv != null;
-        if (bloom) RenderBloom(colorSrv, p);
-        if (godray) RenderGodrays(colorSrv, p);
-        if (fullblur) RenderFullBlur(colorSrv, p);
-        if (anam) RenderAnamorphic(colorSrv, p);
-        if (halo) RenderHalo(depthSrv!, p);
+            c.RSSetState(_raster);
+            c.OMSetDepthStencilState(_depthOff, 0);
+            c.VSSetShader(_vs);
+            c.PSSetSampler(0, _sampler);
+            c.IASetInputLayout(null);
+            c.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
 
-        c.UpdateSubresource(p, _cbuf);
+            bool bloom = p.BloomAmount > 0f || p.Halation > 0f;
+            bool godray = p.GodrayAmount > 0f;
+            bool fullblur = p.BgBlur > 0f || p.Orton > 0f || p.Glamour > 0f || p.Clarity > 0f || p.TiltAmt > 0f;
+            bool anam = p.AnamAmount > 0f;
+            bool halo = p.HaloAmount > 0f && depthSrv != null;
+            if (bloom) RenderBloom(colorSrv, p);
+            if (godray) RenderGodrays(colorSrv, p);
+            if (fullblur) RenderFullBlur(colorSrv, p);
+            if (anam) RenderAnamorphic(colorSrv, p);
+            if (halo) RenderHalo(depthSrv!, p);
 
-        c.OMSetRenderTargets(_rtv!);
-        c.RSSetViewport(new Viewport(0, 0, w, h, 0f, 1f));
-        c.PSSetShader(_ps);
-        c.PSSetShaderResource(0, colorSrv);
-        if (depthSrv != null) c.PSSetShaderResource(1, depthSrv);
-        if (bloom) c.PSSetShaderResource(2, _bloomSrvA!);
-        if (godray) c.PSSetShaderResource(3, _bloomSrvB!);
-        if (fullblur) c.PSSetShaderResource(4, _blurSrvC!);
-        if (anam) c.PSSetShaderResource(5, _anamSrvE!);
-        if (halo) c.PSSetShaderResource(6, _haloSrvG!);
-        for (int mi = 0; mi < 8; mi++) c.PSSetShaderResource((uint)(7 + mi), memeSrvs[mi] ?? _fallbackSrv);
-        c.PSSetConstantBuffer(0, _cbuf);
-        c.Draw(3, 0);
+            c.UpdateSubresource(p, _cbuf);
 
-        depthSrv?.Dispose();
-        for (int mi = 0; mi < 8; mi++) memeSrvs[mi]?.Dispose();
+            c.OMSetRenderTargets(_rtv!);
+            c.RSSetViewport(new Viewport(0, 0, w, h, 0f, 1f));
+            c.PSSetShader(_ps);
+            c.PSSetShaderResource(0, colorSrv);
+            if (depthSrv != null) c.PSSetShaderResource(1, depthSrv);
+            if (bloom) c.PSSetShaderResource(2, _bloomSrvA!);
+            if (godray) c.PSSetShaderResource(3, _bloomSrvB!);
+            if (fullblur) c.PSSetShaderResource(4, _blurSrvC!);
+            if (anam) c.PSSetShaderResource(5, _anamSrvE!);
+            if (halo) c.PSSetShaderResource(6, _haloSrvG!);
+            for (int mi = 0; mi < 8; mi++) c.PSSetShaderResource((uint)(7 + mi), memeSrvs[mi] ?? _fallbackSrv);
+            c.PSSetConstantBuffer(0, _cbuf);
+            c.Draw(3, 0);
+        }
+        finally
+        {
+            depthSrv?.Dispose();
+            for (int mi = 0; mi < 8; mi++) memeSrvs[mi]?.Dispose();
 
-        c.OMSetRenderTargets(1, oldRtvs, oldDsv);
-        if (oldViewports.Length > 0) c.RSSetViewports(oldViewports);
+            c.OMSetRenderTargets(1, oldRtvs, oldDsv);
+            if (oldViewports.Length > 0) c.RSSetViewports(oldViewports);
+            c.OMSetBlendState(oldBlend, oldBlendFactor, oldSampleMask);
 
-        oldRtvs[0]?.Dispose();
-        oldDsv?.Dispose();
+            oldRtvs[0]?.Dispose();
+            oldDsv?.Dispose();
+            oldBlend?.Dispose();
+        }
 
         if (!_loggedFirstRender)
         {
@@ -4117,7 +4257,7 @@ float4 HaloMaskPS(VSOut i) : SV_Target {
         c.PSSetShaderResource(0, colorSrv);
         c.Draw(3, 0);
 
-        SetBloomCb(0f, 1f, 0f, r * RadiusComp);
+        SetBloomCb(0f, 1f, 0f, r * _resScale * RadiusComp);
         c.OMSetRenderTargets(_blurRtvC!);
         c.PSSetShaderResource(0, _blurSrvD!);
         c.Draw(3, 0);

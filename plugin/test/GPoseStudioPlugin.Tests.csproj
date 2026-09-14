@@ -26,6 +26,7 @@
          build, not in the shipped code. -->
     <Compile Include="..\src\PluginConfig.cs" />
     <Compile Include="..\src\LookStore.cs" />
+    <Compile Include="..\src\MaskRegions.cs" />
     <Compile Include="TestServices.cs" />
     <Compile Include="PngTests.cs" />
     <Compile Include="PngEmbedTests.cs" />
@@ -40,5 +41,11 @@
     <Compile Include="ElementLayerTests.cs" />
     <Compile Include="BuiltinSetTests.cs" />
     <Compile Include="TextMarkerTests.cs" />
+    <Compile Include="MaskShapeTests.cs" />
+    <Compile Include="MaskRegionTests.cs" />
+    <Compile Include="MaskInteractionTests.cs" />
+    <Compile Include="EightMaskTests.cs" />
+    <Compile Include="LinkedMaskTests.cs" />
+    <Compile Include="FrameOrderTests.cs" />
   </ItemGroup>
 </Project>

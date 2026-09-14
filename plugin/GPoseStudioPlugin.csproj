@@ -8,7 +8,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>GPoseStudioPlugin</AssemblyName>
     <RootNamespace>GPoseStudio</RootNamespace>
-    <Version>0.9.8.1</Version>
+    <Version>0.9.10</Version>
 
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
@@ -30,7 +30,8 @@
   <PropertyGroup>
     <ShaderOutDir>$(MSBuildProjectDirectory)\obj\shaders</ShaderOutDir>
   </PropertyGroup>
-  <Target Name="CompileShaders"
+
+  <Target Name="CompileShaders" Condition="'$(SkipShaderCompile)' != 'true'"
           Inputs="src\GpuRenderer.cs" Outputs="$(ShaderOutDir)\Hlsl_PS.cso">
     <Message Importance="high" Text="Checking HLSL (recompiles only if the shader text changed; the main PS takes ~15 min when it does)..." />
 

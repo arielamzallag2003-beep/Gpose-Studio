@@ -55,7 +55,7 @@ internal static class TextRender
     private static GraphicsPath BuildText(TextMarker t, FontFamily fam, FontStyle style, float em, Graphics g)
     {
         var path = new GraphicsPath();
-        var fmt = StringFormat.GenericTypographic;
+        using var fmt = (StringFormat)StringFormat.GenericTypographic.Clone();
         fmt.FormatFlags |= StringFormatFlags.MeasureTrailingSpaces;
 
         var lines = (t.Text ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');

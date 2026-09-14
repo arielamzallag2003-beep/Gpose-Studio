@@ -592,6 +592,7 @@ public sealed class PluginConfig : IPluginConfiguration
     public const int ElemFlagFlipV = 2;
     public const int ElemFitShift = 2;
     public const int ElemMaskShift = 4;
+    public const int ElemMaskModeShift = 12;
     public float[] Elem { get; set; } = NewElems();
     private static float[] NewElems()
     {
@@ -975,36 +976,419 @@ public sealed class PluginConfig : IPluginConfiguration
     public float MaskCAngle { get; set; } = 0f;
     public float MaskCFeather { get; set; } = 0.12f;
     public bool MaskCInvert { get; set; } = false;
+    public int MaskDMode { get; set; } = 0;
+    public float MaskDCx { get; set; } = 0.5f;
+    public float MaskDCy { get; set; } = 0.5f;
+    public float MaskDSize { get; set; } = 0.25f;
+    public float MaskDEllipse { get; set; } = 1f;
+    public float MaskDAngle { get; set; } = 0f;
+    public float MaskDFeather { get; set; } = 0.12f;
+    public bool MaskDInvert { get; set; } = false;
+    public int MaskEMode { get; set; } = 0;
+    public float MaskECx { get; set; } = 0.5f;
+    public float MaskECy { get; set; } = 0.5f;
+    public float MaskESize { get; set; } = 0.25f;
+    public float MaskEEllipse { get; set; } = 1f;
+    public float MaskEAngle { get; set; } = 0f;
+    public float MaskEFeather { get; set; } = 0.12f;
+    public bool MaskEInvert { get; set; } = false;
+    public int MaskFMode { get; set; } = 0;
+    public float MaskFCx { get; set; } = 0.5f;
+    public float MaskFCy { get; set; } = 0.5f;
+    public float MaskFSize { get; set; } = 0.25f;
+    public float MaskFEllipse { get; set; } = 1f;
+    public float MaskFAngle { get; set; } = 0f;
+    public float MaskFFeather { get; set; } = 0.12f;
+    public bool MaskFInvert { get; set; } = false;
+    public int MaskGMode { get; set; } = 0;
+    public float MaskGCx { get; set; } = 0.5f;
+    public float MaskGCy { get; set; } = 0.5f;
+    public float MaskGSize { get; set; } = 0.25f;
+    public float MaskGEllipse { get; set; } = 1f;
+    public float MaskGAngle { get; set; } = 0f;
+    public float MaskGFeather { get; set; } = 0.12f;
+    public bool MaskGInvert { get; set; } = false;
+    public int MaskHMode { get; set; } = 0;
+    public float MaskHCx { get; set; } = 0.5f;
+    public float MaskHCy { get; set; } = 0.5f;
+    public float MaskHSize { get; set; } = 0.25f;
+    public float MaskHEllipse { get; set; } = 1f;
+    public float MaskHAngle { get; set; } = 0f;
+    public float MaskHFeather { get; set; } = 0.12f;
+    public bool MaskHInvert { get; set; } = false;
+    public bool MaskALinked { get; set; } = false;
+    public bool MaskBLinked { get; set; } = false;
+    public bool MaskCLinked { get; set; } = false;
+    public bool MaskDLinked { get; set; } = false;
+    public bool MaskELinked { get; set; } = false;
+    public bool MaskFLinked { get; set; } = false;
+    public bool MaskGLinked { get; set; } = false;
+    public bool MaskHLinked { get; set; } = false;
+    public int MaskAFrameRank { get; set; } = 0;
+    public int MaskBFrameRank { get; set; } = 1;
+    public int MaskCFrameRank { get; set; } = 2;
+    public int MaskDFrameRank { get; set; } = 3;
+    public int MaskEFrameRank { get; set; } = 4;
+    public int MaskFFrameRank { get; set; } = 5;
+    public int MaskGFrameRank { get; set; } = 6;
+    public int MaskHFrameRank { get; set; } = 7;
+    public bool MaskFramesStacked { get; set; } = false;
+    public bool MaskOutlineBehind { get; set; } = false;
 
-    public int MaskMode(int i) => i == 0 ? MaskAMode : i == 1 ? MaskBMode : MaskCMode;
-    public float MaskCx(int i) => i == 0 ? MaskACx : i == 1 ? MaskBCx : MaskCCx;
-    public float MaskCy(int i) => i == 0 ? MaskACy : i == 1 ? MaskBCy : MaskCCy;
-    public float MaskSize(int i) => i == 0 ? MaskASize : i == 1 ? MaskBSize : MaskCSize;
-    public float MaskEllipse(int i) => i == 0 ? MaskAEllipse : i == 1 ? MaskBEllipse : MaskCEllipse;
-    public float MaskAngle(int i) => i == 0 ? MaskAAngle : i == 1 ? MaskBAngle : MaskCAngle;
-    public float MaskFeather(int i) => i == 0 ? MaskAFeather : i == 1 ? MaskBFeather : MaskCFeather;
-    public bool MaskInvert(int i) => i == 0 ? MaskAInvert : i == 1 ? MaskBInvert : MaskCInvert;
+    public bool MaskAFrame { get; set; } = false;
+    public float MaskAOutline { get; set; } = 0.004f;
+    public float MaskAOutR { get; set; } = 0.42f;
+    public float MaskAOutG { get; set; } = 0.76f;
+    public float MaskAOutB { get; set; } = 0.86f;
+    public bool MaskBFrame { get; set; } = false;
+    public float MaskBOutline { get; set; } = 0.004f;
+    public float MaskBOutR { get; set; } = 0.90f;
+    public float MaskBOutG { get; set; } = 0.55f;
+    public float MaskBOutB { get; set; } = 0.74f;
+    public bool MaskCFrame { get; set; } = false;
+    public float MaskCOutline { get; set; } = 0.004f;
+    public float MaskCOutR { get; set; } = 0.95f;
+    public float MaskCOutG { get; set; } = 0.80f;
+    public float MaskCOutB { get; set; } = 0.40f;
+    public bool MaskDFrame { get; set; } = false;
+    public float MaskDOutline { get; set; } = 0.004f;
+    public float MaskDOutR { get; set; } = 0.55f;
+    public float MaskDOutG { get; set; } = 0.85f;
+    public float MaskDOutB { get; set; } = 0.45f;
+    public bool MaskEFrame { get; set; } = false;
+    public float MaskEOutline { get; set; } = 0.004f;
+    public float MaskEOutR { get; set; } = 0.95f;
+    public float MaskEOutG { get; set; } = 0.6f;
+    public float MaskEOutB { get; set; } = 0.35f;
+    public bool MaskFFrame { get; set; } = false;
+    public float MaskFOutline { get; set; } = 0.004f;
+    public float MaskFOutR { get; set; } = 0.7f;
+    public float MaskFOutG { get; set; } = 0.58f;
+    public float MaskFOutB { get; set; } = 0.95f;
+    public bool MaskGFrame { get; set; } = false;
+    public float MaskGOutline { get; set; } = 0.004f;
+    public float MaskGOutR { get; set; } = 0.4f;
+    public float MaskGOutG { get; set; } = 0.85f;
+    public float MaskGOutB { get; set; } = 0.8f;
+    public bool MaskHFrame { get; set; } = false;
+    public float MaskHOutline { get; set; } = 0.004f;
+    public float MaskHOutR { get; set; } = 0.85f;
+    public float MaskHOutG { get; set; } = 0.85f;
+    public float MaskHOutB { get; set; } = 0.85f;
+    public float MaskFillR { get; set; } = 0.97f;
+    public float MaskFillG { get; set; } = 0.96f;
+    public float MaskFillB { get; set; } = 0.94f;
+    public float MaskFillA { get; set; } = 1f;
+    public bool MaskBreakOut { get; set; } = true;
 
-    public void SetMaskMode(int i, int v) { if (i == 0) MaskAMode = v; else if (i == 1) MaskBMode = v; else MaskCMode = v; }
-    public void SetMaskCx(int i, float v) { if (i == 0) MaskACx = v; else if (i == 1) MaskBCx = v; else MaskCCx = v; }
-    public void SetMaskCy(int i, float v) { if (i == 0) MaskACy = v; else if (i == 1) MaskBCy = v; else MaskCCy = v; }
-    public void SetMaskSize(int i, float v) { if (i == 0) MaskASize = v; else if (i == 1) MaskBSize = v; else MaskCSize = v; }
-    public void SetMaskEllipse(int i, float v) { if (i == 0) MaskAEllipse = v; else if (i == 1) MaskBEllipse = v; else MaskCEllipse = v; }
-    public void SetMaskAngle(int i, float v) { if (i == 0) MaskAAngle = v; else if (i == 1) MaskBAngle = v; else MaskCAngle = v; }
-    public void SetMaskFeather(int i, float v) { if (i == 0) MaskAFeather = v; else if (i == 1) MaskBFeather = v; else MaskCFeather = v; }
-    public void SetMaskInvert(int i, bool v) { if (i == 0) MaskAInvert = v; else if (i == 1) MaskBInvert = v; else MaskCInvert = v; }
+    public string MaskAOverrides { get; set; } = "";
+    public string MaskBOverrides { get; set; } = "";
+    public string MaskCOverrides { get; set; } = "";
+    public string MaskDOverrides { get; set; } = "";
+    public string MaskEOverrides { get; set; } = "";
+    public string MaskFOverrides { get; set; } = "";
+    public string MaskGOverrides { get; set; } = "";
+    public string MaskHOverrides { get; set; } = "";
+    public bool MaskARegionOn { get; set; } = true;
+    public bool MaskBRegionOn { get; set; } = true;
+    public bool MaskCRegionOn { get; set; } = true;
+    public bool MaskDRegionOn { get; set; } = true;
+    public bool MaskERegionOn { get; set; } = true;
+    public bool MaskFRegionOn { get; set; } = true;
+    public bool MaskGRegionOn { get; set; } = true;
+    public bool MaskHRegionOn { get; set; } = true;
+    public float MaskARegionMix { get; set; } = 1f;
+    public float MaskBRegionMix { get; set; } = 1f;
+    public float MaskCRegionMix { get; set; } = 1f;
+    public float MaskDRegionMix { get; set; } = 1f;
+    public float MaskERegionMix { get; set; } = 1f;
+    public float MaskFRegionMix { get; set; } = 1f;
+    public float MaskGRegionMix { get; set; } = 1f;
+    public float MaskHRegionMix { get; set; } = 1f;
+    public int MaskRegionOverlap { get; set; } = 0;
+    public int MaskARegionRank { get; set; } = 0;
+    public int MaskBRegionRank { get; set; } = 1;
+    public int MaskCRegionRank { get; set; } = 2;
+    public int MaskDRegionRank { get; set; } = 3;
+    public int MaskERegionRank { get; set; } = 4;
+    public int MaskFRegionRank { get; set; } = 5;
+    public int MaskGRegionRank { get; set; } = 6;
+    public int MaskHRegionRank { get; set; } = 7;
+
+    public int MaskMode(int i) => (i switch { 0 => MaskAMode, 1 => MaskBMode, 2 => MaskCMode, 3 => MaskDMode, 4 => MaskEMode, 5 => MaskFMode, 6 => MaskGMode, _ => MaskHMode });
+    public float MaskCx(int i) => (i switch { 0 => MaskACx, 1 => MaskBCx, 2 => MaskCCx, 3 => MaskDCx, 4 => MaskECx, 5 => MaskFCx, 6 => MaskGCx, _ => MaskHCx });
+    public float MaskCy(int i) => (i switch { 0 => MaskACy, 1 => MaskBCy, 2 => MaskCCy, 3 => MaskDCy, 4 => MaskECy, 5 => MaskFCy, 6 => MaskGCy, _ => MaskHCy });
+    public float MaskSize(int i) => (i switch { 0 => MaskASize, 1 => MaskBSize, 2 => MaskCSize, 3 => MaskDSize, 4 => MaskESize, 5 => MaskFSize, 6 => MaskGSize, _ => MaskHSize });
+    public float MaskEllipse(int i) => (i switch { 0 => MaskAEllipse, 1 => MaskBEllipse, 2 => MaskCEllipse, 3 => MaskDEllipse, 4 => MaskEEllipse, 5 => MaskFEllipse, 6 => MaskGEllipse, _ => MaskHEllipse });
+    public float MaskAngle(int i) => (i switch { 0 => MaskAAngle, 1 => MaskBAngle, 2 => MaskCAngle, 3 => MaskDAngle, 4 => MaskEAngle, 5 => MaskFAngle, 6 => MaskGAngle, _ => MaskHAngle });
+    public float MaskFeather(int i) => (i switch { 0 => MaskAFeather, 1 => MaskBFeather, 2 => MaskCFeather, 3 => MaskDFeather, 4 => MaskEFeather, 5 => MaskFFeather, 6 => MaskGFeather, _ => MaskHFeather });
+    public bool MaskInvert(int i) => (i switch { 0 => MaskAInvert, 1 => MaskBInvert, 2 => MaskCInvert, 3 => MaskDInvert, 4 => MaskEInvert, 5 => MaskFInvert, 6 => MaskGInvert, _ => MaskHInvert });
+
+    public void SetMaskMode(int i, int v) { switch (i) { case 0: MaskAMode = v; break; case 1: MaskBMode = v; break; case 2: MaskCMode = v; break; case 3: MaskDMode = v; break; case 4: MaskEMode = v; break; case 5: MaskFMode = v; break; case 6: MaskGMode = v; break; default: MaskHMode = v; break; } }
+    public void SetMaskCx(int i, float v) { switch (i) { case 0: MaskACx = v; break; case 1: MaskBCx = v; break; case 2: MaskCCx = v; break; case 3: MaskDCx = v; break; case 4: MaskECx = v; break; case 5: MaskFCx = v; break; case 6: MaskGCx = v; break; default: MaskHCx = v; break; } }
+    public void SetMaskCy(int i, float v) { switch (i) { case 0: MaskACy = v; break; case 1: MaskBCy = v; break; case 2: MaskCCy = v; break; case 3: MaskDCy = v; break; case 4: MaskECy = v; break; case 5: MaskFCy = v; break; case 6: MaskGCy = v; break; default: MaskHCy = v; break; } }
+    public void SetMaskSize(int i, float v) { switch (i) { case 0: MaskASize = v; break; case 1: MaskBSize = v; break; case 2: MaskCSize = v; break; case 3: MaskDSize = v; break; case 4: MaskESize = v; break; case 5: MaskFSize = v; break; case 6: MaskGSize = v; break; default: MaskHSize = v; break; } }
+    public void SetMaskEllipse(int i, float v) { switch (i) { case 0: MaskAEllipse = v; break; case 1: MaskBEllipse = v; break; case 2: MaskCEllipse = v; break; case 3: MaskDEllipse = v; break; case 4: MaskEEllipse = v; break; case 5: MaskFEllipse = v; break; case 6: MaskGEllipse = v; break; default: MaskHEllipse = v; break; } }
+    public void SetMaskAngle(int i, float v) { switch (i) { case 0: MaskAAngle = v; break; case 1: MaskBAngle = v; break; case 2: MaskCAngle = v; break; case 3: MaskDAngle = v; break; case 4: MaskEAngle = v; break; case 5: MaskFAngle = v; break; case 6: MaskGAngle = v; break; default: MaskHAngle = v; break; } }
+    public void SetMaskFeather(int i, float v) { switch (i) { case 0: MaskAFeather = v; break; case 1: MaskBFeather = v; break; case 2: MaskCFeather = v; break; case 3: MaskDFeather = v; break; case 4: MaskEFeather = v; break; case 5: MaskFFeather = v; break; case 6: MaskGFeather = v; break; default: MaskHFeather = v; break; } }
+    public void SetMaskInvert(int i, bool v) { switch (i) { case 0: MaskAInvert = v; break; case 1: MaskBInvert = v; break; case 2: MaskCInvert = v; break; case 3: MaskDInvert = v; break; case 4: MaskEInvert = v; break; case 5: MaskFInvert = v; break; case 6: MaskGInvert = v; break; default: MaskHInvert = v; break; } }
+
+    public bool MaskFrame(int i) => (i switch { 0 => MaskAFrame, 1 => MaskBFrame, 2 => MaskCFrame, 3 => MaskDFrame, 4 => MaskEFrame, 5 => MaskFFrame, 6 => MaskGFrame, _ => MaskHFrame });
+    public void SetMaskFrame(int i, bool v) { switch (i) { case 0: MaskAFrame = v; break; case 1: MaskBFrame = v; break; case 2: MaskCFrame = v; break; case 3: MaskDFrame = v; break; case 4: MaskEFrame = v; break; case 5: MaskFFrame = v; break; case 6: MaskGFrame = v; break; default: MaskHFrame = v; break; } }
+    public float MaskOutline(int i) => (i switch { 0 => MaskAOutline, 1 => MaskBOutline, 2 => MaskCOutline, 3 => MaskDOutline, 4 => MaskEOutline, 5 => MaskFOutline, 6 => MaskGOutline, _ => MaskHOutline });
+    public void SetMaskOutline(int i, float v) { switch (i) { case 0: MaskAOutline = v; break; case 1: MaskBOutline = v; break; case 2: MaskCOutline = v; break; case 3: MaskDOutline = v; break; case 4: MaskEOutline = v; break; case 5: MaskFOutline = v; break; case 6: MaskGOutline = v; break; default: MaskHOutline = v; break; } }
+    public (float R, float G, float B) MaskOutColor(int i) => i switch
+    {
+        0 => (MaskAOutR, MaskAOutG, MaskAOutB),
+        1 => (MaskBOutR, MaskBOutG, MaskBOutB),
+        2 => (MaskCOutR, MaskCOutG, MaskCOutB),
+        3 => (MaskDOutR, MaskDOutG, MaskDOutB),
+        4 => (MaskEOutR, MaskEOutG, MaskEOutB),
+        5 => (MaskFOutR, MaskFOutG, MaskFOutB),
+        6 => (MaskGOutR, MaskGOutG, MaskGOutB),
+        _ => (MaskHOutR, MaskHOutG, MaskHOutB),
+    };
+    public void SetMaskOutColor(int i, float r, float g, float b)
+    {
+        switch (i)
+        {
+            case 0: MaskAOutR = r; MaskAOutG = g; MaskAOutB = b; break;
+            case 1: MaskBOutR = r; MaskBOutG = g; MaskBOutB = b; break;
+            case 2: MaskCOutR = r; MaskCOutG = g; MaskCOutB = b; break;
+            case 3: MaskDOutR = r; MaskDOutG = g; MaskDOutB = b; break;
+            case 4: MaskEOutR = r; MaskEOutG = g; MaskEOutB = b; break;
+            case 5: MaskFOutR = r; MaskFOutG = g; MaskFOutB = b; break;
+            case 6: MaskGOutR = r; MaskGOutG = g; MaskGOutB = b; break;
+            default: MaskHOutR = r; MaskHOutG = g; MaskHOutB = b; break;
+        }
+    }
+    public static (float R, float G, float B) MaskOutlineDefault(int i) => i switch
+    {
+        0 => (0.42f, 0.76f, 0.86f),
+        1 => (0.9f, 0.55f, 0.74f),
+        2 => (0.95f, 0.8f, 0.4f),
+        3 => (0.55f, 0.85f, 0.45f),
+        4 => (0.95f, 0.6f, 0.35f),
+        5 => (0.7f, 0.58f, 0.95f),
+        6 => (0.4f, 0.85f, 0.8f),
+        _ => (0.85f, 0.85f, 0.85f),
+    };
+
+    public const int MaskCount = ZoneBits.MaskCount;
+    public static char MaskLetter(int i) => (char)('A' + i);
+
+    public bool AnyMaskFrame()
+    {
+        for (int i = 0; i < MaskCount; i++) if (MaskFrame(i) && MaskMode(i) != 0) return true;
+        return false;
+    }
+
+    public bool AnyMaskSetUp()
+    {
+        for (int i = 0; i < MaskCount; i++) if (MaskMode(i) != 0) return true;
+        return false;
+    }
+
+    public bool MaskLinked(int i) => i switch { 0 => MaskALinked, 1 => MaskBLinked, 2 => MaskCLinked, 3 => MaskDLinked, 4 => MaskELinked, 5 => MaskFLinked, 6 => MaskGLinked, _ => MaskHLinked };
+    public void SetMaskLinked(int i, bool v) { switch (i) { case 0: MaskALinked = v; break; case 1: MaskBLinked = v; break; case 2: MaskCLinked = v; break; case 3: MaskDLinked = v; break; case 4: MaskELinked = v; break; case 5: MaskFLinked = v; break; case 6: MaskGLinked = v; break; default: MaskHLinked = v; break; } }
+
+    public int MaskFrameRank(int i) => i switch { 0 => MaskAFrameRank, 1 => MaskBFrameRank, 2 => MaskCFrameRank, 3 => MaskDFrameRank, 4 => MaskEFrameRank, 5 => MaskFFrameRank, 6 => MaskGFrameRank, _ => MaskHFrameRank };
+    public void SetMaskFrameRank(int i, int v) { switch (i) { case 0: MaskAFrameRank = v; break; case 1: MaskBFrameRank = v; break; case 2: MaskCFrameRank = v; break; case 3: MaskDFrameRank = v; break; case 4: MaskEFrameRank = v; break; case 5: MaskFFrameRank = v; break; case 6: MaskGFrameRank = v; break; default: MaskHFrameRank = v; break; } }
+
+    public int[] MaskFrameStack()
+    {
+        var frames = new List<int>(MaskCount);
+        for (int i = 0; i < MaskCount; i++) if (MaskFrame(i) && MaskMode(i) != 0) frames.Add(i);
+        frames.Sort((x, y) => MaskFrameRank(x) != MaskFrameRank(y) ? MaskFrameRank(x).CompareTo(MaskFrameRank(y)) : x.CompareTo(y));
+        return frames.ToArray();
+    }
+
+    public void MoveMaskFrame(int i, bool up)
+    {
+        var order = MaskFrameStack();
+        int pos = Array.IndexOf(order, i), j = pos + (up ? 1 : -1);
+        if (pos >= 0 && j >= 0 && j < order.Length) (order[pos], order[j]) = (order[j], order[pos]);
+        for (int r = 0; r < order.Length; r++) SetMaskFrameRank(order[r], r);
+    }
+
+    public readonly record struct MaskPose(float Cx, float Cy, float Size, float Angle);
+    public MaskPose PoseOf(int i) => new(MaskCx(i), MaskCy(i), MaskSize(i), MaskAngle(i));
+
+    public int[] LinkedPlaceable(int i)
+    {
+        if (!MaskLinked(i)) return new[] { i };
+        var group = new List<int>(MaskCount);
+        for (int k = 0; k < MaskCount; k++)
+            if (k == i || (MaskLinked(k) && MaskPlaceable(MaskMode(k)))) group.Add(k);
+        return group.ToArray();
+    }
+
+    public void MoveMaskGroup(IReadOnlyList<int> members, IReadOnlyList<MaskPose> start,
+                              float centreX, float centreY, float dx, float dy, float turn, float scale, float asp)
+    {
+        float c = MathF.Cos(turn), sn = MathF.Sin(turn), a = Math.Max(asp, 1e-4f);
+        for (int k = 0; k < members.Count && k < start.Count; k++)
+        {
+            var p = start[k];
+            int i = members[k];
+            float ox = (p.Cx - centreX) * a, oy = p.Cy - centreY;
+            float rx = (ox * c - oy * sn) * scale, ry = (ox * sn + oy * c) * scale;
+            SetMaskCx(i, centreX + dx + rx / a);
+            SetMaskCy(i, centreY + dy + ry);
+            float ang = p.Angle + turn;
+            ang -= MathF.Tau * MathF.Floor((ang + MathF.PI) / MathF.Tau);
+            SetMaskAngle(i, ang);
+            SetMaskSize(i, Math.Clamp(p.Size * scale, 0.005f, 3f));
+        }
+    }
+
+    public int LiveMaskBits(int bits)
+    {
+        int live = 0;
+        for (int i = 0; i < MaskCount; i++) if (MaskMode(i) != 0) live |= ZoneBits.MaskBit(i);
+        int masks = ZoneBits.MaskPart(bits) & live;
+        return masks == 0 ? 0 : (bits & ~ZoneBits.Masks) | masks;
+    }
+
+    public int FirstFreeMask()
+    {
+        for (int i = 0; i < MaskCount; i++) if (MaskMode(i) == 0) return i;
+        return -1;
+    }
+
+    private static readonly System.Reflection.PropertyInfo[] MaskSlotProps =
+        System.Array.FindAll(typeof(PluginConfig).GetProperties(),
+            p => p.CanWrite && p.Name.Length > 5 && p.Name.StartsWith("Mask", System.StringComparison.Ordinal)
+                 && p.Name[4] >= 'A' && p.Name[4] <= 'H' && char.IsUpper(p.Name[5]));
+
+    public void ClearMask(int i)
+    {
+        var def = new PluginConfig();
+        char letter = MaskLetter(i);
+        foreach (var p in MaskSlotProps)
+            if (p.Name[4] == letter) p.SetValue(this, p.GetValue(def));
+        int bit = ZoneBits.MaskBit(i);
+        foreach (var p in ZoneProps) p.SetValue(this, ((int?)p.GetValue(this) ?? 0) & ~bit);
+        for (int slot = 0; slot < 8; slot++) SetElemMasks(slot, ElemMasks(slot) & ~bit);
+        ExportCutoutMasks &= ~bit;
+        ExportExcludeMasks &= ~bit;
+        if (PlacingMask == i + 1) PlacingMask = 0;
+        if (MaskShowWhich == i + 1) DebugShowMask = false;
+    }
+
+    public List<string> MaskUsers(int i)
+    {
+        int bit = ZoneBits.MaskBit(i);
+        var users = new List<string>();
+        foreach (var p in ZoneProps)
+            if ((((int?)p.GetValue(this) ?? 0) & bit) != 0) users.Add(p.Name);
+        for (int slot = 0; slot < 8; slot++)
+            if (Elem != null && Elem[slot * ElemStride] > 0.5f && (ElemMasks(slot) & bit) != 0) users.Add("Elem" + slot);
+        if ((ExportCutoutMasks & bit) != 0) users.Add(nameof(ExportCutoutMasks));
+        if ((ExportExcludeMasks & bit) != 0) users.Add(nameof(ExportExcludeMasks));
+        return users;
+    }
+
+    public void RemoveMaskUser(int i, string name)
+    {
+        int bit = ZoneBits.MaskBit(i);
+        if (name == nameof(ExportCutoutMasks)) { ExportCutoutMasks &= ~bit; return; }
+        if (name == nameof(ExportExcludeMasks)) { ExportExcludeMasks &= ~bit; return; }
+        if (name.StartsWith("Elem", System.StringComparison.Ordinal) && int.TryParse(name.AsSpan(4), out int slot) && slot is >= 0 and < 8)
+        {
+            SetElemMasks(slot, ElemMasks(slot) & ~bit);
+            return;
+        }
+        foreach (var p in ZoneProps)
+            if (p.Name == name) { p.SetValue(this, ((int?)p.GetValue(this) ?? 0) & ~bit); return; }
+    }
+
+    public int DefaultCutoutMasks()
+    {
+        int frames = 0, shapes = 0;
+        for (int i = 0; i < MaskCount; i++)
+        {
+            if (MaskMode(i) == 0) continue;
+            shapes |= ZoneBits.MaskBit(i);
+            if (MaskFrame(i)) frames |= ZoneBits.MaskBit(i);
+        }
+        return ZoneBits.WithMaskMode(frames != 0 ? frames : shapes, ZoneBits.MaskEither);
+    }
+
+    public static bool MaskPlaceable(int mode) => mode is 1 or 2 or 4 or 5;
+    public static bool MaskHasEdge(int mode) => mode is 1 or 2 or 4 or 5;
+
+    public enum MaskPreset { Face, Diamond, LeftHalf, TopHalf, Subject, Highlights, Shadows, SkinTones }
+
+    public void ApplyMaskPreset(int i, MaskPreset p)
+    {
+        const float Quarter = (float)(Math.PI / 4.0), HalfPi = (float)(Math.PI / 2.0);
+        (int mode, float cx, float cy, float size, float ell, float ang, float feath) v = p switch
+        {
+            MaskPreset.Face       => (1, 0.50f, 0.34f, 0.17f, 1.30f, 0f, 0.10f),
+            MaskPreset.Diamond    => (4, 0.50f, 0.50f, 0.26f, 1.00f, Quarter, 0.004f),
+            MaskPreset.LeftHalf   => (2, 0.50f, 0.50f, 0.25f, 1.00f, 0f, 0.12f),
+            MaskPreset.TopHalf    => (2, 0.50f, 0.50f, 0.25f, 1.00f, HalfPi, 0.12f),
+            MaskPreset.Subject    => (8, 0.50f, 0.50f, 0.25f, 1.00f, 0f, 0.02f),
+            MaskPreset.Highlights => (6, 0.50f, 0.80f, 0.20f, 1.00f, 0f, 0.08f),
+            MaskPreset.Shadows    => (6, 0.50f, 0.12f, 0.14f, 1.00f, 0f, 0.08f),
+            MaskPreset.SkinTones  => (7, 0.055f, 0.50f, 0.06f, 0.15f, 0f, 0.03f),
+            _                     => (0, 0.50f, 0.50f, 0.25f, 1.00f, 0f, 0.08f),
+        };
+        SetMaskMode(i, v.mode); SetMaskCx(i, v.cx); SetMaskCy(i, v.cy); SetMaskSize(i, v.size);
+        SetMaskEllipse(i, v.ell); SetMaskAngle(i, v.ang); SetMaskFeather(i, v.feath); SetMaskInvert(i, false);
+    }
+
+    public void SetUpTwoDiamondFrames()
+    {
+        const float Quarter = (float)(Math.PI / 4.0);
+        ApplyMaskPreset(0, MaskPreset.Diamond);
+        MaskACx = 0.56f; MaskACy = 0.38f; MaskASize = 0.22f; MaskAAngle = Quarter;
+        ApplyMaskPreset(1, MaskPreset.Diamond);
+        MaskBCx = 0.44f; MaskBCy = 0.62f; MaskBSize = 0.22f; MaskBAngle = Quarter;
+        MaskAFrame = true; MaskBFrame = true;
+        MaskAOutline = 0.004f; MaskBOutline = 0.004f;
+        MaskBreakOut = true;
+        MaskFillA = 1f;
+    }
+
+    public void ClearMaskFrames() { for (int i = 0; i < MaskCount; i++) SetMaskFrame(i, false); }
+
+    public string MaskOverrides(int i) => (i switch { 0 => MaskAOverrides, 1 => MaskBOverrides, 2 => MaskCOverrides, 3 => MaskDOverrides, 4 => MaskEOverrides, 5 => MaskFOverrides, 6 => MaskGOverrides, _ => MaskHOverrides }) ?? "";
+    public void SetMaskOverrides(int i, string? v) { switch (i) { case 0: MaskAOverrides = v ?? ""; break; case 1: MaskBOverrides = v ?? ""; break; case 2: MaskCOverrides = v ?? ""; break; case 3: MaskDOverrides = v ?? ""; break; case 4: MaskEOverrides = v ?? ""; break; case 5: MaskFOverrides = v ?? ""; break; case 6: MaskGOverrides = v ?? ""; break; default: MaskHOverrides = v ?? ""; break; } }
+    public bool MaskRegionOn(int i) => (i switch { 0 => MaskARegionOn, 1 => MaskBRegionOn, 2 => MaskCRegionOn, 3 => MaskDRegionOn, 4 => MaskERegionOn, 5 => MaskFRegionOn, 6 => MaskGRegionOn, _ => MaskHRegionOn });
+    public void SetMaskRegionOn(int i, bool v) { switch (i) { case 0: MaskARegionOn = v; break; case 1: MaskBRegionOn = v; break; case 2: MaskCRegionOn = v; break; case 3: MaskDRegionOn = v; break; case 4: MaskERegionOn = v; break; case 5: MaskFRegionOn = v; break; case 6: MaskGRegionOn = v; break; default: MaskHRegionOn = v; break; } }
+    public float MaskRegionMix(int i) => (i switch { 0 => MaskARegionMix, 1 => MaskBRegionMix, 2 => MaskCRegionMix, 3 => MaskDRegionMix, 4 => MaskERegionMix, 5 => MaskFRegionMix, 6 => MaskGRegionMix, _ => MaskHRegionMix });
+    public void SetMaskRegionMix(int i, float v) { switch (i) { case 0: MaskARegionMix = v; break; case 1: MaskBRegionMix = v; break; case 2: MaskCRegionMix = v; break; case 3: MaskDRegionMix = v; break; case 4: MaskERegionMix = v; break; case 5: MaskFRegionMix = v; break; case 6: MaskGRegionMix = v; break; default: MaskHRegionMix = v; break; } }
+
+    public bool MaskRegionActive(int i)
+        => MaskMode(i) != 0 && MaskRegionOn(i) && MaskRegionMix(i) > 0f && MaskOverrides(i).Length > 2;
+
+    public int MaskRegionRank(int i) => (i switch { 0 => MaskARegionRank, 1 => MaskBRegionRank, 2 => MaskCRegionRank, 3 => MaskDRegionRank, 4 => MaskERegionRank, 5 => MaskFRegionRank, 6 => MaskGRegionRank, _ => MaskHRegionRank });
+    public void SetMaskRegionRank(int i, int v) { switch (i) { case 0: MaskARegionRank = v; break; case 1: MaskBRegionRank = v; break; case 2: MaskCRegionRank = v; break; case 3: MaskDRegionRank = v; break; case 4: MaskERegionRank = v; break; case 5: MaskFRegionRank = v; break; case 6: MaskGRegionRank = v; break; default: MaskHRegionRank = v; break; } }
+
+    public int[] MaskRegionStack()
+    {
+        var order = new[] { 0, 1, 2, 3, 4, 5, 6, 7 };
+        Array.Sort(order, (x, y) => MaskRegionRank(x) != MaskRegionRank(y)
+            ? MaskRegionRank(x).CompareTo(MaskRegionRank(y)) : x.CompareTo(y));
+        return order;
+    }
+
+    public void MoveMaskRegion(int i, bool up)
+    {
+        var order = MaskRegionStack();
+        int pos = Array.IndexOf(order, i), step = up ? 1 : -1, j = pos + step;
+        while (j >= 0 && j < order.Length && !MaskRegionActive(order[j])) j += step;
+        if (pos >= 0 && j >= 0 && j < order.Length) (order[pos], order[j]) = (order[j], order[pos]);
+        for (int r = 0; r < order.Length; r++) SetMaskRegionRank(order[r], r);
+    }
 
     private static readonly System.Reflection.PropertyInfo[] ZoneProps =
         System.Array.FindAll(typeof(PluginConfig).GetProperties(),
             p => p.PropertyType == typeof(int) && p.Name.StartsWith("Zone", System.StringComparison.Ordinal));
 
-    public int MaskSubscribers(int i)
-    {
-        int bit = ZoneBits.MaskBit(i), n = 0;
-        foreach (var p in ZoneProps)
-            if ((((int?)p.GetValue(this) ?? 0) & bit) != 0) n++;
-        return n;
-    }
+    public int MaskSubscribers(int i) => MaskUsers(i).Count;
 
     public float RimSplit { get; set; } = 0f;
     public float RimSplitAngle { get; set; } = 0f;
@@ -1174,6 +1558,9 @@ public sealed class PluginConfig : IPluginConfiguration
     public bool EmbedLookInPng { get; set; } = true;
 
     public bool ExportTransparent { get; set; } = false;
+    public int ExportCutoutMasks { get; set; } = 0;
+    public bool ExportCutoutSubject { get; set; } = true;
+    public int ExportExcludeMasks { get; set; } = 0;
     public float CutoutFeather { get; set; } = 0.3f;
     public float CutoutShrink { get; set; } = 0.3f;
     public bool DebugShowMatte { get; set; } = false;
@@ -2298,78 +2685,6 @@ public sealed class PluginConfig : IPluginConfiguration
         FinishAsOnePicture(0.015f, 0.04f, 0f, -0.014f);
     }
 
-    public void ApplyAshfallPreset()
-    {
-        ResetLook();
-        ApplyOnLocationPreset();
-        SeedPortraitMask();
-
-        EnParticles = true;
-        ParticleType = 0;
-        ParticleAmount = 0.42f; ParticleSize = 0.62f; ParticleFall = 0.34f;
-        ParticleR = 0.72f; ParticleG = 0.66f; ParticleB = 0.60f;
-        ParticleSolid = true;
-        ParticleSoft = 0.68f;
-        ParticleTumble = 0.80f;
-        BokehAmount = 0f;
-        ZoneBokeh = 7;
-
-        EnFog = true; FogStrength = 0.16f; FogStart = 0.10f;
-        FogColorR = 0.40f; FogColorG = 0.35f; FogColorB = 0.32f;
-
-        WashAmount = 0.13f; WashX = 0.18f; WashY = 0.24f;
-        WashR = 1f; WashG = 0.62f; WashB = 0.30f;
-
-        EnForegroundOn = true;
-        FgPlaceMode = 1;
-        FgPlaceSize = 0.30f; FgPlaceSoft = 0.50f;
-        FgOpacity = 0.26f; FgBlendMode = 3; FgDepthGate = 0;
-        FgSeamMode = 3; FgSeamFeather = 0.28f; FgSeamMatch = 0.25f;
-        FgSeamMix = 2; FgSeamMixLevel = 0.45f;
-
-        BgStyle = 27;
-        UnivBase = 0; UnivNoise = 5; UnivNoiseAmt = 0.55f; UnivNoiseScale = 0.20f;
-        UnivWarp = 0.80f; UnivDetail = 0.40f; UnivPattern = 0; UnivPatStrength = 0f;
-        UnivParticle = 0; UnivOrb = 0; UnivGround = 0; UnivHorizon = 0f;
-        BgFlow = 0.18f; BgNebContrast = 0.18f; BgHaze = 0.06f; BgGlow = 0.05f;
-        BgTopR = 0.26f; BgTopG = 0.22f; BgTopB = 0.20f;
-        BgCol5R = 0.18f; BgCol5G = 0.15f; BgCol5B = 0.14f;
-        BgMidR = 0.11f; BgMidG = 0.09f; BgMidB = 0.09f;
-        BgCol6R = 0.06f; BgCol6G = 0.05f; BgCol6B = 0.05f;
-        BgBotR = 0.03f; BgBotG = 0.03f; BgBotB = 0.03f;
-        BgCol4R = 0.42f; BgCol4G = 0.30f; BgCol4B = 0.22f;
-        CopyFgFromScratch(this, 0);
-        BgFlow = 0.24f; UnivNoiseScale = 0.14f; UnivWarp = 0.62f;
-        CopyFgFromScratch(this, 1);
-        SetFgBActive(true);
-
-        EnBackdrop = false; BgRecolor = 0f; BgStyle = 0; BgBStyle = 0;
-        EnBgFill = false; BgFill = 0f;
-
-        SitTheSubjectInIt(shadow: 0f, ground: 0f, wrap: 0f);
-        EnEdge = false;
-
-        Exposure = -0.06f; Contrast = 0.06f; Saturation = -0.20f; Vibrance = 0.10f;
-        Temperature = 0.04f; Tint = 0.01f;
-        Lift = 0.020f; Gamma = 0.010f; Gain = -0.014f;
-        BlackPoint = 0.006f; WhitePoint = 1.04f;
-
-        EnSkin = true; SkinWarmth = 0.20f; SkinFlush = 0.07f;
-        EnBeauty = true; BeautyAmount = 0.10f; BeautyRadius = 0.85f; BeautyGlow = 0.20f;
-
-        EnGlow = true; BloomAmount = 0.14f; BloomThreshold = 0.82f; BloomRadius = 3.4f;
-        Halation = 0.11f; HalationR = 1f; HalationG = 0.78f; HalationB = 0.58f;
-        Orton = 0.06f; GodrayAmount = 0f; AnamAmount = 0f;
-
-        EnLens = true;
-        FilmRolloff = 0.62f; FilmSat = 0.40f; FilmToe = 0.22f;
-        LensVig = 0.26f; LensCornerSoft = 0.16f;
-        Vignette = 0.10f; Grain = 0.13f; Chroma = 0.03f; ChromaRadial = 0.88f;
-        Sharpen = 0.14f; Clarity = 0.12f;
-
-        FinishAsOnePicture(-0.01f, 0.04f, -0.03f, 0.014f);
-    }
-
     public void ApplyNeonDrivePreset()
     {
         ResetLook();
@@ -2835,10 +3150,13 @@ public sealed class PluginConfig : IPluginConfiguration
     public void SetElemFit(int slot, int fit)
         => SetElemFlags(slot, (ElemFlagsOf(slot) & ~(3 << ElemFitShift)) | ((fit & 3) << ElemFitShift));
 
-    public int ElemMasks(int slot) => ((ElemFlagsOf(slot) >> ElemMaskShift) & 7) << 3;
+    public int ElemMasks(int slot)
+        => (((ElemFlagsOf(slot) >> ElemMaskShift) & 255) << 3)
+         | (((ElemFlagsOf(slot) >> ElemMaskModeShift) & 3) << ZoneBits.MaskModeShift);
     public void SetElemMasks(int slot, int zoneBits)
-        => SetElemFlags(slot, (ElemFlagsOf(slot) & ~(7 << ElemMaskShift))
-                            | ((ZoneBits.MaskPart(zoneBits) >> 3) << ElemMaskShift));
+        => SetElemFlags(slot, (ElemFlagsOf(slot) & ~(255 << ElemMaskShift) & ~(3 << ElemMaskModeShift))
+                            | ((ZoneBits.MaskPart(zoneBits) >> 3) << ElemMaskShift)
+                            | (ZoneBits.MaskMode(zoneBits) << ElemMaskModeShift));
 
     public void CopyElemSlot(int from, int to)
     {

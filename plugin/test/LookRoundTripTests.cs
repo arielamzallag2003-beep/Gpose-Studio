@@ -23,7 +23,7 @@ public class LookRoundTripTests
         c.Elem[^1] = 2.5f;
         c.FgField[0] = 3.5f;
         c.FgField[^1] = 4.5f;
-        c.Texts.Add(new TextMarker { Text = "caption", X = 0.25f, Size = 18f });
+        c.Texts.Add(new TextMarker { Text = "caption", X = 0.25f, Size = 0.05f });
         return c;
     }
 

@@ -102,15 +102,16 @@ public static partial class LookStore
     public static bool SaveToFile(string path, PluginConfig cfg, out string error)
     {
         error = "";
+        var tmp = path + ".tmp";
         try
         {
-            var tmp = path + ".tmp";
             File.WriteAllText(tmp, Capture(cfg, forSharing: true));
             File.Move(tmp, path, overwrite: true);
             return true;
         }
         catch (Exception ex)
         {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch {  }
             error = $"Could not write that file: {ex.Message}";
             Services.Log.Warning($"LookStore.SaveToFile('{path}') failed: {ex.Message}");
             return false;
@@ -252,11 +253,13 @@ public static partial class LookStore
                                 for (int k = 0; k < 89; k++) up[f * 111 + k] = arr[f * 89 + k];
                             p.SetValue(cfg, up);
                         }
-                        else if (arr.Length == 128 && want == 160)
+                        else if (p.Name == "Elem" && want == 8 * PluginConfig.ElemStride
+                                 && (arr.Length == 128 || arr.Length == 160))
                         {
-                            var up = new float[160];
-                            for (int L = 0; L < 8; L++) for (int k = 0; k < 16; k++) up[L * 20 + k] = arr[L * 16 + k];
-                            p.SetValue(cfg, up);
+                            int old = arr.Length / 8;
+                            p.SetValue(cfg, PackedArray.Widen(arr, length: want, blocks: 8,
+                                                              oldStride: old, newStride: PluginConfig.ElemStride,
+                                                              copyPerBlock: old));
                         }
                     }
                 }
@@ -265,8 +268,16 @@ public static partial class LookStore
                     var arr = el.Deserialize<string[]>();
                     if (arr != null && arr.Length == 8) p.SetValue(cfg, arr);
                 }
+                else if (p.PropertyType == typeof(string) && p.Name.EndsWith("Overrides", StringComparison.Ordinal))
+                {
+                    var str = el.ValueKind == JsonValueKind.String ? el.GetString() ?? "" : "";
+                    p.SetValue(cfg, str.Length > MaskRegions.MaxOverrideChars ? "" : str);
+                }
                 else if (p.PropertyType == typeof(List<TextMarker>))
+                {
                     p.SetValue(cfg, el.Deserialize<List<TextMarker>>() ?? new List<TextMarker>());
+                    cfg.MigrateTextSize();
+                }
 
                 if (part == Part.All || !IsAlwaysCarried(p.Name)) applied++;
             }
@@ -388,6 +399,7 @@ public static partial class LookStore
 
         bool refresh = state.Version < BuiltinsVersion;
         int kept = 0;
+        bool hashesChanged = false;
 
         foreach (var (name, _, apply) in Builtins)
         {
@@ -411,7 +423,7 @@ public static partial class LookStore
             apply(tmp);
             tmp.CarryPatternIdentity();
             var content = Capture(tmp);
-            if (SaveContent(name, content, out var err)) state.Hashes[name] = BuiltinGuard.Hash(content);
+            if (SaveContent(name, content, out var err)) { state.Hashes[name] = BuiltinGuard.Hash(content); hashesChanged = true; }
             else Services.Log.Warning($"could not seed built-in look '{name}': {err}");
         }
 
@@ -421,7 +433,10 @@ public static partial class LookStore
             try
             {
                 if (TryResolve(name, out var p, out _) && File.Exists(p))
+                {
                     state.Hashes[name] = BuiltinGuard.Hash(File.ReadAllText(p));
+                    hashesChanged = true;
+                }
             }
             catch {  }
         }
@@ -431,6 +446,9 @@ public static partial class LookStore
             if (kept > 0)
                 Services.Log.Info($"kept {kept} built-in look(s) that had been edited; the rest were refreshed.");
             state.Version = BuiltinsVersion;
+        }
+        if (refresh || hashesChanged)
+        {
             try { File.WriteAllText(MarkerPath, BuiltinGuard.Write(state)); } catch { }
         }
     }

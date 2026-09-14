@@ -115,21 +115,33 @@ public sealed class MainWindow : Window, IDisposable
 
     public override void OnClose() => FlushSave(Plugin.Config);
 
+    public override void OnOpen() => _lookList = LookStore.List();
+
+    private void SaveSoon()
+    {
+        long now = Environment.TickCount64;
+        if (!_savePending) _saveDeadline = now + SaveMaxWaitMs;
+        _savePending = true;
+        _saveQuietAt = now + SaveQuietMs;
+    }
+
     public override void Draw()
     {
         var cfg = Plugin.Config;
         _dirty = false;
+        if (_baseline.Length == 0) _baseline = LookStore.Capture(cfg);
 
         DrawHeader(cfg);
+        var ed = BeginRegionEdit(cfg);
         ImGui.Separator();
-        DrawPresets(cfg);
+        DrawPresets(ed);
         ImGui.Spacing();
 
-        DrawFinder(cfg);
+        DrawFinder(ed);
 
         if (_filter != FilterMode.None)
         {
-            DrawAllBodies(cfg);
+            DrawAllBodies(ed);
         }
         else
         using (var bar = ImRaii.TabBar("##gps_tabs"))
@@ -137,16 +149,18 @@ public sealed class MainWindow : Window, IDisposable
             if (bar)
             {
                 DrawLooksTab(cfg);
-                DrawLookTab(cfg);
-                DrawCameraTab(cfg);
-                DrawLightTab(cfg);
-                DrawSubjectTab(cfg);
-                DrawBackgroundTab(cfg);
-                DrawFxTab(cfg);
+                DrawLookTab(ed);
+                DrawCameraTab(ed);
+                DrawLightTab(ed);
+                DrawSubjectTab(ed);
+                DrawBackgroundTab(ed);
+                DrawFxTab(ed);
                 DrawOverlaysTab(cfg);
                 DrawExportTab(cfg);
             }
         }
+
+        EndRegionEdit(cfg);
 
         if (_status.Length > 0)
         {
@@ -199,7 +213,7 @@ public sealed class MainWindow : Window, IDisposable
         ImGui.SameLine();
         float btnX = ImGui.GetContentRegionMax().X - 268f;
         if (btnX > ImGui.GetCursorPosX()) ImGui.SetCursorPosX(btnX);
-        bool canUndo = _undo.Count > 0, canRedo = _redo.Count > 0;
+        bool canUndo = _undo.Count > 0 || _savePending, canRedo = _redo.Count > 0 && !_savePending;
         using (ImRaii.Disabled(!canUndo))
             if (ImGui.Button(canUndo ? $"Undo {_undo.Count}" : "Undo", new Vector2(76f, 0)) && canUndo) Undo(cfg);
         if (ImGui.IsItemHovered())
@@ -212,7 +226,13 @@ public sealed class MainWindow : Window, IDisposable
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(canRedo ? $"Step forward again. {_redo.Count} available." : "Nothing to redo.");
         ImGui.SameLine();
-        if (ImGui.Button("Reset look", new Vector2(96f, 0))) { cfg.ResetLook(); _dirty = true; }
+        if (_regionEdit >= 1 && _regionEdit <= PluginConfig.MaskCount)
+        {
+            int rm = _regionEdit - 1;
+            if (ImGui.Button($"Clear inside {(char)('A' + rm)}##rsin", new Vector2(96f, 0))) { cfg.SetMaskOverrides(rm, ""); _dirty = true; }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Forget this mask\u2019s own settings; inside it follows the whole image again.");
+        }
+        else if (ImGui.Button("Reset look", new Vector2(96f, 0))) { cfg.ResetLook(); _dirty = true; }
 
         var bypass = cfg.Bypass;
         if (ImGui.Checkbox("Bypass — show the original (A/B compare)", ref bypass)) { cfg.Bypass = bypass; _dirty = true; }
@@ -254,7 +274,12 @@ public sealed class MainWindow : Window, IDisposable
         ImGui.SameLine();
         void Preset(string name, Action<PluginConfig> apply)
         {
-            if (ImGui.SmallButton(name)) { cfg.ResetLook(); apply(cfg); _dirty = true; }
+            if (ImGui.SmallButton(name))
+            {
+                if (_edMask >= 0) MaskRegions.ResetOverridable(cfg); else cfg.ResetLook();
+                apply(cfg);
+                _dirty = true;
+            }
             ImGui.SameLine();
         }
         Preset("Neutral", _ => { });
@@ -332,7 +357,7 @@ public sealed class MainWindow : Window, IDisposable
     private void DrawGradeGroups(PluginConfig cfg)
     {
         if (ImGui.Button("Suggest grade from character"))
-            _live.SuggestGrade(cfg, r => _status = r);
+            _live.SuggestGrade(Plugin.Config, r => _status = r);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Samples your character's dominant color and fills the grade-color\neffects with a matching dominant/complement palette (enables Color balance).");
 
@@ -359,7 +384,7 @@ public sealed class MainWindow : Window, IDisposable
             cfg.ScopeSplit = Knob("Scope split", cfg.ScopeSplit, 0.01f, 0.4f, Defaults.ScopeSplit, "Depth that divides subject from background.", "%.3f");
             cfg.ScopeSoft = Knob("Scope softness", cfg.ScopeSoft, 0.005f, 0.2f, Defaults.ScopeSoft, "Transition width.", "%.3f");
         }
-        if (cfg.MaskAMode != 0 || cfg.MaskBMode != 0 || cfg.MaskCMode != 0)
+        if (cfg.AnyMaskSetUp())
         {
             ImGui.TextUnformatted("Limit the grade to");
             ImGui.SameLine();
@@ -373,7 +398,7 @@ public sealed class MainWindow : Window, IDisposable
         if (cfg.ZoneNear > 0f)
             cfg.ZoneNearSoft = Knob("  Zone softness", cfg.ZoneNearSoft, 0.005f, 0.15f, Defaults.ZoneNearSoft, "Transition width of the foreground boundary.", "%.3f");
         ImGui.Spacing();
-        DrawMasksGroup(cfg);
+        DrawMasksGroup(Plugin.Config);
         ImGui.Separator();
 
         using (var grp = GroupEn("Color balance (3-way)", cfg.ColorBalance > 0f, cfg.EnColorBalance, v => cfg.EnColorBalance = v, true, zoneGet: () => cfg.ZoneCb, zoneSet: v => cfg.ZoneCb = v))
@@ -482,7 +507,7 @@ public sealed class MainWindow : Window, IDisposable
         if (grp.Show)
         {
             ImGui.TextDisabled("A targeting-visor overlay over the whole frame (like the 'Magitek HUD' preset).");
-            ImGui.TextDisabled("The preset's reticle/scanner are movable layers — see 'Elements' (Background tab).");
+            ImGui.TextDisabled("The preset's reticle/scanner are movable layers — see 'Elements' (Overlays tab).");
             cfg.HudIntensity = Knob("Intensity", cfg.HudIntensity, 0f, 2f, Defaults.HudIntensity, "Master brightness of the HUD (0 = off).");
             var hc = ColorPick("Color", new Vector3(cfg.HudR, cfg.HudG, cfg.HudB), new Vector3(Defaults.HudR, Defaults.HudG, Defaults.HudB));
             cfg.HudR = hc.X; cfg.HudG = hc.Y; cfg.HudB = hc.Z;
@@ -512,64 +537,7 @@ public sealed class MainWindow : Window, IDisposable
             cfg.UwMotes = Knob("Marine snow", cfg.UwMotes, 0f, 1f, Defaults.UwMotes, "Faint floating particles drifting in the water.");
         }
 
-#if PUBLIC_BUILD
         ImGui.TextDisabled("Particles & orbs — in progress, not in this build yet.");
-#else
-        using (var grp = GroupEn("Particles & bokeh", cfg.ParticleAmount > 0f || cfg.BokehAmount > 0f, cfg.EnParticles, v => cfg.EnParticles = v, zoneGet: () => cfg.ZoneBokeh, zoneSet: v => cfg.ZoneBokeh = v))
-        if (grp.Show)
-        {
-            ImGui.TextDisabled("Falling petals / hearts / bubbles in front, and shaped bokeh on background highlights.");
-            Combo("Particle", "##ptype", UiParticle, cfg.ParticleType, v => cfg.ParticleType = v);
-            cfg.ParticleAmount = Knob("Particles", cfg.ParticleAmount, 0f, 1f, Defaults.ParticleAmount, "How many / how strong (0 = off).");
-            if (cfg.ParticleAmount > 0f)
-            {
-                cfg.ParticleSize = Knob("  Size", cfg.ParticleSize, 0f, 1f, Defaults.ParticleSize, "Particle size.");
-                cfg.ParticleFall = Knob("  Fall speed", cfg.ParticleFall, 0f, 1f, Defaults.ParticleFall, "How fast they drift down.\nFreeze, at the top of the window, stops them wherever they are.");
-                cfg.ParticleSoft = Knob("  Near blur", cfg.ParticleSoft, 0f, 1f, Defaults.ParticleSoft,
-                    "How out of focus the nearest ones are. This is the control that puts them IN\nthe air rather than on the glass: nothing in a real lens is sharp at two\ndistances at once, so uniformly crisp flakes read as a decal over the shot.");
-                cfg.ParticleTumble = Knob("  Tumble", cfg.ParticleTumble, 0f, 1f, Defaults.ParticleTumble,
-                    "A flat thing turning over as it falls — wide, then edge-on, then wide again.\nAt zero they are stamps that never turn, which is the other giveaway.");
-                var pc = ColorPick("  Color", new Vector3(cfg.ParticleR, cfg.ParticleG, cfg.ParticleB), new Vector3(Defaults.ParticleR, Defaults.ParticleG, Defaults.ParticleB));
-                cfg.ParticleR = pc.X; cfg.ParticleG = pc.Y; cfg.ParticleB = pc.Z;
-                bool psolid = cfg.ParticleSolid;
-                if (ImGui.Checkbox("  Solid (not glowing)##psolid", ref psolid)) { cfg.ParticleSolid = psolid; _dirty = true; }
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip(
-                    "Off, particles ADD light, which is right for snow catching a lamp.\n" +
-                    "On, they sit in front of what is behind them.\n\n" +
-                    "Anything darker than the sky needs this: adding a dark colour still\nbrightens, which is why ash and petals came out white however they were tinted.");
-            }
-            ImGui.Spacing();
-            Combo("Orb shape", "##bshape", UiBokeh, cfg.BokehShape, v => cfg.BokehShape = v);
-            if (cfg.BokehShape == 2 || cfg.BokehShape == 4)
-            {
-                cfg.BokehBlades = Knob("  Blades", cfg.BokehBlades, 3f, 12f, Defaults.BokehBlades,
-                    "How many leaves the diaphragm has. Five gives pentagons, six hexagons \u2014\nthis is the same shape at different stops rather than a list of them.", "%.0f");
-            }
-            cfg.BokehRotate = Knob("  Rotation", cfg.BokehRotate, -3.15f, 3.15f, Defaults.BokehRotate,
-                "Turns every orb. Each one also gets a little of its own on top, because a\nfield of polygons all facing one way is a pattern rather than a lens.");
-            var bc = ColorPick("Colour", new Vector3(cfg.BokehR, cfg.BokehG, cfg.BokehB),
-                               new Vector3(Defaults.BokehR, Defaults.BokehG, Defaults.BokehB));
-            cfg.BokehR = bc.X; cfg.BokehG = bc.Y; cfg.BokehB = bc.Z;
-            cfg.BokehHueVar = Knob("Colour spread", cfg.BokehHueVar, 0f, 0.5f, Defaults.BokehHueVar,
-                "How far each orb wanders from that colour. Real defocused highlights are never\none colour \u2014 they carry whatever lit them, and the glass adds a fringe.", "%.3f");
-
-            Combo("Source", "##bsrc", UiBokehSource, cfg.BokehSource, v => cfg.BokehSource = v);
-            if (cfg.BokehSource == 0)
-                ImGui.TextDisabled("Needs something bright to defocus, which an empty backdrop has none of.\nSwitch to Everywhere to use these over one.");
-            else
-                ImGui.TextDisabled("The orbs are the light rather than a report of one, so they need no\nhighlight and no depth. This is the mode for an empty backdrop.");
-
-            if (cfg.BokehSource == 0)
-            cfg.BokehThreshold = Knob("Highlight threshold", cfg.BokehThreshold, 0f, 1f, Defaults.BokehThreshold,
-                "How bright the background has to be before it blooms one. Bokeh is what a\nHIGHLIGHT looks like out of focus \u2014 a defocused grey sky is still a grey sky,\nand discs spread evenly over one is the giveaway. Lower it to catch more.");
-            cfg.BokehDensity = Knob("Density", cfg.BokehDensity, 0f, 1f, Defaults.BokehDensity, "How closely packed they are.");
-            cfg.BokehRim = Knob("Rim", cfg.BokehRim, 0f, 1f, Defaults.BokehRim,
-                "Brighter at the edge than through the middle \u2014 the soap-bubble look of a\ncheaper lens. At zero they are flat discs, which no lens produces.");
-            cfg.BokehCatEye = Knob("Cat's eye", cfg.BokehCatEye, 0f, 1f, Defaults.BokehCatEye,
-                "A lens clips its own aperture toward the frame edge, so a disc in the corner\nis a lens shape pointing at the middle rather than a circle. Its absence is\nthe clearest sign these were pasted on.");
-            cfg.BokehAmount = Knob("Bokeh", cfg.BokehAmount, 0f, 1f, Defaults.BokehAmount, "Glowing shaped discs over bright background highlights (needs depth).");
-        }
-#endif
 
     }
 
@@ -682,7 +650,7 @@ public sealed class MainWindow : Window, IDisposable
         {
             cfg.BgBlur = Knob("Background blur", cfg.BgBlur, 0f, 1f, Defaults.BgBlur, "Blurs the far background (portrait bokeh); the subject stays sharp.");
             cfg.BgBlurStart = Knob("Blur start", cfg.BgBlurStart, 0f, 0.5f, Defaults.BgBlurStart, "How far out the blur begins.");
-            ImGui.TextDisabled("Blur spread is the shared \"Soft blur radius\" in Effects ▸ Glow.");
+            ImGui.TextDisabled("Blur spread is the shared \"Soft blur radius\" in Light ▸ Glow.");
         }
 
         using (var grp = GroupEn("Frost overlay", cfg.FrostAmount > 0f, cfg.EnFrost, v => cfg.EnFrost = v, zoneGet: () => cfg.ZoneFrost, zoneSet: v => cfg.ZoneFrost = v))
@@ -1196,7 +1164,7 @@ public sealed class MainWindow : Window, IDisposable
         if (grp.Show)
         {
             if (!_live.DepthAvailable) ImGui.TextDisabled("Needs depth — enable live preview in gpose.");
-            ImGui.TextDisabled("A dreamy soft-focus bloom on the SUBJECT only (background stays crisp).\nSubject-masked version of Effects ▸ Glow ▸ Glamour, which is full-frame.");
+            ImGui.TextDisabled("A dreamy soft-focus bloom on the SUBJECT only (background stays crisp).\nSubject-masked version of Light ▸ Glow ▸ Glamour, which is full-frame.");
             cfg.BeautyAmount = Knob("Amount", cfg.BeautyAmount, 0f, 1f, Defaults.BeautyAmount, "Softening strength (0 = off).");
             cfg.BeautyRadius = Knob("Softness", cfg.BeautyRadius, 0f, 2f, Defaults.BeautyRadius, "How wide the diffusion spreads.");
             cfg.BeautyGlow = Knob("Highlight bloom", cfg.BeautyGlow, 0f, 1.5f, Defaults.BeautyGlow, "Extra glow lifted from the bright areas.");
@@ -1355,7 +1323,7 @@ public sealed class MainWindow : Window, IDisposable
         ImGui.Separator();
         using (ImRaii.Disabled(!_gate.IsActive))
         {
-            if (ImGui.Button("Capture GPose → Save PNG", new Vector2(-1f, 0))) RequestSave();
+            if (ImGui.Button((cfg.ExportFormat == 1 ? "Capture GPose → Save JPEG" : "Capture GPose → Save PNG") + "###capture", new Vector2(-1f, 0))) RequestSave();
         }
         ImGui.TextDisabled(_gate.IsActive
             ? "Saves exactly what the preview shows (all effects baked in)."
@@ -1372,10 +1340,9 @@ public sealed class MainWindow : Window, IDisposable
             _dirty = true;
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(
-            "Export the subject on nothing, for compositing elsewhere.\n\n" +
-            "The background style and the solid fill are switched off for the\n" +
-            "export only \u2014 a backdrop and a transparent background cannot both\n" +
-            "be true, and the preview keeps showing the look as you composed it.\n\n" +
+            "Export on nothing, for compositing elsewhere: the subject alone, or the inside\nof chosen masks.\n\n" +
+            "Cutting around the subject switches the background style and the solid fill\n" +
+            "off for the export only \u2014 the preview keeps showing the look as composed.\n\n" +
             "JPEG has no transparency, so this does nothing in that format.");
 
         if (cfg.ExportTransparent)
@@ -1383,7 +1350,39 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.Indent(10f);
             if (cfg.ExportFormat == 1)
                 ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f),
-                    "Format is JPEG, which has no transparency. Switch to PNG below.");
+                    "Format is JPEG, which has no transparency. Switch to PNG above.");
+
+            bool byMasks = cfg.LiveMaskBits(cfg.ExportCutoutMasks) != 0;
+            if (ImGui.RadioButton("  Keep the subject##cutsubj", !byMasks) && byMasks) { cfg.ExportCutoutMasks = 0; _dirty = true; }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Cut around the character by depth; the backdrop and fill go.");
+            ImGui.SameLine();
+            using (ImRaii.Disabled(!cfg.AnyMaskSetUp()))
+            {
+                if (ImGui.RadioButton("Keep inside masks##cutmask", byMasks) && !byMasks) { cfg.ExportCutoutMasks = cfg.DefaultCutoutMasks(); _dirty = true; }
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(cfg.AnyMaskSetUp()
+                ? "Keep what is inside chosen masks \u2014 backdrop, fill, own settings and all \u2014 and make\neverything outside them transparent. Frames are chosen to start with."
+                : "Set up a mask first (Masks, in the Color tab).");
+            if (byMasks)
+            {
+                ImGui.TextUnformatted("  Keep inside");
+                ImGui.SameLine();
+                MaskToggles("ExportCut", () => cfg.ExportCutoutMasks, v => cfg.ExportCutoutMasks = v);
+                ImGui.NewLine();
+                bool keepSubject = cfg.ExportCutoutSubject;
+                if (ImGui.Checkbox("  and the subject where it leaves them##cutks", ref keepSubject)) { cfg.ExportCutoutSubject = keepSubject; _dirty = true; }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("A hand or a weapon reaching past the edge of the masks stays in the picture.");
+                ImGui.TextDisabled("  Several masks: the button after the letters says how they combine.");
+            }
+            if (cfg.AnyMaskSetUp())
+            {
+                ImGui.TextUnformatted("  Remove inside");
+                ImGui.SameLine();
+                MaskToggles("ExportRemove", () => cfg.ExportExcludeMasks, v => cfg.ExportExcludeMasks = v);
+                ImGui.NewLine();
+                if (ZoneBits.MaskPart(cfg.ExportExcludeMasks) != 0)
+                    ImGui.TextDisabled("  These masks come out transparent in the file, whatever is kept above.\n  Preview the matte does not show them; the saved PNG does.");
+            }
 
             cfg.CutoutShrink = Knob("  Edge shrink", cfg.CutoutShrink, 0f, 1f, Defaults.CutoutShrink,
                 "Pulls the matte inward. The depth silhouette is a little wider than the character, because the\nanti-aliased pixels along the edge are a blend of subject and whatever was behind it \u2014 keeping those\nfully opaque is what leaves a halo of old background around a cutout. Raise this until the halo goes.");
@@ -1429,7 +1428,7 @@ public sealed class MainWindow : Window, IDisposable
         if (ImGui.Button("Randomize")) { Roll(cfg); _dirty = true; }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Roll whatever is not locked below — a coherent archetype + harmonious palette.\nKeep rolling until something catches your eye, then tweak.");
         ImGui.SameLine();
-        using (ImRaii.Disabled(_rollUndo == null))
+        using (ImRaii.Disabled(_rollUndo == null || _rollUndoId != ImGui.GetID("##rollscope")))
         {
             if (ImGui.Button("Undo")) { RestoreRoll(cfg); _dirty = true; }
         }
@@ -1575,8 +1574,8 @@ public sealed class MainWindow : Window, IDisposable
 
         if (ImGui.CollapsingHeader("Atmosphere##uatmo"))
         {
-            cfg.UnivCaustic = Knob("Caustics", cfg.UnivCaustic, 0f, 1.5f, Defaults.UnivCaustic, "Rippling refracted-light web — water surface, ice, aether. Drifts with Current flow + Animation speed, tinted by Accent.");
-            cfg.UnivShafts = Knob("Light shafts", cfg.UnivShafts, 0f, 1.5f, Defaults.UnivShafts, "Volumetric god-ray beams fanning from the orb (or the top when no orb). Accent-tinted.");
+            cfg.UnivCaustic = Knob("Caustics##univatmo", cfg.UnivCaustic, 0f, 1.5f, Defaults.UnivCaustic, "Rippling refracted-light web — water surface, ice, aether. Drifts with Current flow + Animation speed, tinted by Accent.");
+            cfg.UnivShafts = Knob("Light shafts##univatmo", cfg.UnivShafts, 0f, 1.5f, Defaults.UnivShafts, "Volumetric god-ray beams fanning from the orb (or the top when no orb). Accent-tinted.");
             ImGui.TextDisabled("Haze, core glow, hue variation and stars live in the Glow group below.");
         }
 
@@ -1607,6 +1606,7 @@ public sealed class MainWindow : Window, IDisposable
     private readonly Random _rng = new();
     private bool _lockPalette, _lockStructure;
     private Dictionary<string, object>? _rollUndo;
+    private uint _rollUndoId;
 
     private static bool IsRollField(System.Reflection.PropertyInfo p) =>
         p.CanRead && p.CanWrite && (p.PropertyType == typeof(float) || p.PropertyType == typeof(int))
@@ -1615,13 +1615,14 @@ public sealed class MainWindow : Window, IDisposable
     private void SnapshotRoll(PluginConfig cfg)
     {
         _rollUndo = new Dictionary<string, object>();
+        _rollUndoId = ImGui.GetID("##rollscope");
         foreach (var p in typeof(PluginConfig).GetProperties())
             if (IsRollField(p)) _rollUndo[p.Name] = p.GetValue(cfg)!;
     }
 
     private void RestoreRoll(PluginConfig cfg)
     {
-        if (_rollUndo == null) return;
+        if (_rollUndo == null || _rollUndoId != ImGui.GetID("##rollscope")) return;
         foreach (var p in typeof(PluginConfig).GetProperties())
             if (IsRollField(p) && _rollUndo.TryGetValue(p.Name, out var v)) p.SetValue(cfg, v);
         _rollUndo = null;
@@ -1897,7 +1898,7 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.PopItemWidth();
             var caps = BgCaps(st);
             {
-                if (ReferenceEquals(cfg, Plugin.Config))
+                if (!ReferenceEquals(cfg, _scratch))
                 {
                 cfg.BgRecolor = Knob("Strength", cfg.BgRecolor, 0f, 1f, Defaults.BgRecolor, "How strongly the background style is applied (1 = fully replaces the background).");
                 cfg.BgRecolorStart = Knob("Start (depth)", cfg.BgRecolorStart, 0f, 0.5f, Defaults.BgRecolorStart, "How far out the background begins. Lower it to catch a wall or object just behind the subject.");
@@ -1936,7 +1937,7 @@ public sealed class MainWindow : Window, IDisposable
                     : st == 20
                     ? "Colors 1-5 = sky (top -> horizon); glow color = the moon. Scale = clouds, Scale Y = moon size, Offset = moon position."
                     : st == 21
-                    ? "Tempe's variant: Colors 1-5 = the crimson abyss; glow color = the moon's red iris (the relic). Her teal aether is baked in. Scale = clouds, Scale Y = moon size, Offset = moon position. Floor + reflection are in the Ground group."
+                    ? "Tempe's variant: Colors 1-5 = the crimson abyss; glow color = the moon's red iris (the relic). Her teal aether is baked in. Scale = clouds, Scale Y = moon size, Offset = moon position. Floor height is 'Theme floor line' (Light ▸ Ground shadow)."
                     : st == 22
                     ? "Forge: Colors 1-5 = sooty ambient (top -> ember low); glow color = the sparks. Scale = spark density, Scale Y = furnace size, Offset = furnace position. Molten trough sits at the Ground level."
                     : st == 23
@@ -2075,10 +2076,10 @@ public sealed class MainWindow : Window, IDisposable
                     cfg.BgFlow = Knob("Flow", cfg.BgFlow, -1f, 1f, Defaults.BgFlow, "Drift of the flames, sparks and molten metal.");
                     cfg.BgTwist = Knob("Spark drift", cfg.BgTwist, -1f, 1f, Defaults.BgTwist, "Sideways lean of the rising sparks.");
                     cfg.BgHaze = Knob("Heat shimmer", cfg.BgHaze, 0f, 1f, Defaults.BgHaze, "Rippling heat-haze distortion above the forge.");
-                    ImGui.TextDisabled("Molten trough height = 'Ground level' (Ground group below).");
+                    ImGui.TextDisabled("Molten trough height = 'Theme floor line' (Light ▸ Ground shadow).");
                 }
                 if (st == 21)
-                    ImGui.TextDisabled("Floor height + her reflection live in the 'Ground (fake floor)' group below.");
+                    ImGui.TextDisabled("Floor height = 'Theme floor line' (Light ▸ Ground shadow).");
                 if (isNebulaOrNoise)
                     cfg.BgHueVar = Knob("Hue variation", cfg.BgHueVar, 0f, 1f, Defaults.BgHueVar, "Drifts the hue across the clouds for richer, multi-toned colour.");
                 cfg.BgStars = Knob("Stars", cfg.BgStars, 0f, 1f, Defaults.BgStars, "Procedural starfield over the background (works on any style).");
@@ -2260,7 +2261,7 @@ public sealed class MainWindow : Window, IDisposable
                      : "Widens the edge of the shape itself, so it can sit on a photograph\nwithout announcing that it is vector art.",
             ty == 18 ? "%.3f" : "%.4f");
 
-        if (cfg.MaskAMode != 0 || cfg.MaskBMode != 0 || cfg.MaskCMode != 0)
+        if (cfg.AnyMaskSetUp())
         {
             int slot = _elemSlot;
             ImGui.TextUnformatted("Limit to");
@@ -2324,7 +2325,7 @@ public sealed class MainWindow : Window, IDisposable
                 {
                     cfg.ElemImages[slot] = name;
                     _status = $"Imported \u2018{name}\u2019 into the plugin's own folder.";
-                    _dirty = true;
+                    SaveSoon();
                 }
                 else _status = err;
             });
@@ -2366,7 +2367,7 @@ public sealed class MainWindow : Window, IDisposable
 
     private float Knob(string label, float v, float min, float max, float def, string? tip = null, string fmt = "%.2f")
     {
-        ImGui.TextUnformatted(label);
+        ImGui.TextUnformatted(Shown(label));
         var t = v;
         ImGui.PushItemWidth(-1f);
         if (ImGui.SliderFloat("##" + label, ref t, min, max, fmt)) _dirty = true;
@@ -2376,6 +2377,12 @@ public sealed class MainWindow : Window, IDisposable
         if (hovered)
             ImGui.SetTooltip((tip != null ? tip + "\n" : "") + "Right-click: reset to default");
         return t;
+    }
+
+    private static string Shown(string label)
+    {
+        int k = label.IndexOf("##", StringComparison.Ordinal);
+        return k < 0 ? label : label.Substring(0, k);
     }
 
     private void DrawTextGroup(PluginConfig cfg)
@@ -2591,11 +2598,13 @@ public sealed class MainWindow : Window, IDisposable
         int bits = get();
         var cfg = Plugin.Config;
         using var pad = ImRaii.PushStyle(ImGuiStyleVar.FramePadding, new Vector2(7f, 3f));
-        for (int k = 0; k < 3; k++)
+        int ticked = 0;
+        for (int k = 0; k < PluginConfig.MaskCount; k++)
         {
             if (cfg.MaskMode(k) == 0) continue;
             int bit = ZoneBits.MaskBit(k);
             bool on = (bits & bit) != 0;
+            if (on) ticked++;
             ImGui.PushStyleColor(ImGuiCol.Button, on ? new Vector4(0.30f, 0.62f, 0.34f, 1f)
                                                      : new Vector4(0.22f, 0.22f, 0.24f, 1f));
             if (ImGui.SmallButton(((char)('A' + k)).ToString() + "##m" + title + k))
@@ -2606,10 +2615,35 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.PopStyleColor();
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip($"Limit this to mask {(char)('A' + k)}.\n" +
-                                 "Masks combine by narrowing: two of them means where both overlap.\nSet them up under Masks, in the Color tab.");
+                                 "With two or more ticked, the button after the letters says how they combine.\nSet masks up under Masks, in the Color tab.");
+            ImGui.SameLine(0f, 2f);
+        }
+
+        if (ticked >= 2)
+        {
+            int mode = ZoneBits.MaskMode(bits);
+            ImGui.PushStyleColor(ImGuiCol.Button, mode == ZoneBits.MaskBoth ? new Vector4(0.22f, 0.22f, 0.24f, 1f)
+                                                                            : new Vector4(0.62f, 0.45f, 0.20f, 1f));
+            if (ImGui.SmallButton(UiMaskCombine[mode] + "##mc" + title))
+            {
+                set(ZoneBits.WithMaskMode(bits, (mode + 1) % 4));
+                _dirty = true;
+            }
+            ImGui.PopStyleColor();
+            if (ImGui.IsItemHovered())
+            {
+                string Row(int m, string text) => (m == mode ? "\u25b8 " : "   ") + text;
+                ImGui.SetTooltip("How the ticked masks combine for this effect. Click to change.\n\n" +
+                                 Row(0, "both      inside all of them") + "\n" +
+                                 Row(1, "either    inside any of them") + "\n" +
+                                 Row(2, "only one  where just one covers; overlaps cancel") + "\n" +
+                                 Row(3, "minus     inside the first letter, outside the others"));
+            }
             ImGui.SameLine(0f, 2f);
         }
     }
+
+    private static readonly string[] UiMaskCombine = { "both", "either", "only one", "minus" };
 
     private GroupScope GroupEn(string title, bool active, bool enabled, Action<bool> setEnabled, bool open = false,
                               Func<int>? zoneGet = null, Action<int>? zoneSet = null, bool maskOnly = false)
@@ -2643,7 +2677,20 @@ public sealed class MainWindow : Window, IDisposable
     private int _maskSel;
 
     private static readonly string[] UiMaskMode =
-        { "Off", "Ellipse", "Linear gradient", "Depth band" };
+        { "Off", "Ellipse", "Linear gradient", "Depth band", "Rectangle", "Ring",
+          "Brightness range", "Colour range", "Subject (depth)" };
+    private static readonly string[] UiMaskShapes = UiMaskMode[1..];
+    private static readonly (string Label, PluginConfig.MaskPreset Kind, string Tip)[] UiMaskPresets =
+    {
+        ("Face", PluginConfig.MaskPreset.Face, "An ellipse the size of a head, in the upper third. Drag it onto the face."),
+        ("Diamond", PluginConfig.MaskPreset.Diamond, "A square turned 45 degrees \u2014 the panel shape of a layout."),
+        ("Left half", PluginConfig.MaskPreset.LeftHalf, "A soft divide down the middle, covering the left."),
+        ("Top half", PluginConfig.MaskPreset.TopHalf, "A soft divide across the middle, covering the top."),
+        ("Subject", PluginConfig.MaskPreset.Subject, "The character, by depth \u2014 the same line the backdrop and the cutout use.\nNothing to place: it follows the pose."),
+        ("Highlights", PluginConfig.MaskPreset.Highlights, "The bright parts of the shot, whatever shape they are."),
+        ("Shadows", PluginConfig.MaskPreset.Shadows, "The dark parts of the shot."),
+        ("Skin tones", PluginConfig.MaskPreset.SkinTones, "Everything near the hue of skin, ignoring greys. Check it with\nShow \u2014 warm wood and gold will be caught too."),
+    };
 
     private void DrawMasksGroup(PluginConfig cfg)
     {
@@ -2651,112 +2698,604 @@ public sealed class MainWindow : Window, IDisposable
         if (!ImGui.CollapsingHeader("Masks###Masks")) return;
 
         ImGui.Indent(10f);
-        ImGui.TextDisabled("A shaped region an effect can be limited to. Set one up here, then press\nits letter on any effect\u2019s header, beside F / C / B.");
+        ImGui.TextDisabled("Shapes an effect can be limited to, panels for a layout, and places with\nsettings of their own. Up to eight, A to H. Press a mask\u2019s letter on any\neffect\u2019s header to aim that effect at it.");
 
-        for (int k = 0; k < 3; k++)
+        int inUse = 0, firstInUse = -1;
+        for (int k = 0; k < PluginConfig.MaskCount; k++)
         {
-            bool sel = _maskSel == k;
-            bool live = cfg.MaskMode(k) != 0;
-            ImGui.PushStyleColor(ImGuiCol.Button, sel ? new Vector4(0.30f, 0.62f, 0.34f, 1f)
-                                                      : new Vector4(0.22f, 0.22f, 0.24f, 1f));
-            if (ImGui.Button(((char)('A' + k)).ToString() + (live ? " \u25cf" : "") + "##masksel" + k, new Vector2(52f, 0)))
+            if (cfg.MaskMode(k) == 0) continue;
+            if (firstInUse < 0) firstInUse = k;
+            inUse++;
+            DrawMaskRow(cfg, k);
+        }
+        if (inUse == 0) ImGui.TextDisabled("No masks yet.");
+        if (cfg.MaskMode(Math.Clamp(_maskSel, 0, PluginConfig.MaskCount - 1)) == 0 && firstInUse >= 0) _maskSel = firstInUse;
+
+        int free = cfg.FirstFreeMask();
+        using (ImRaii.Disabled(free < 0))
+        {
+            if (ImGui.Button(free < 0 ? "All eight masks are in use###mnew" : $"+ New mask ({PluginConfig.MaskLetter(free)})###mnew", new Vector2(210f, 0)))
+                ImGui.OpenPopup("##masknew");
+        }
+        if (ImGui.BeginPopup("##masknew"))
+        {
+            ImGui.TextDisabled("Start from");
+            if (ImGui.Selectable("Ellipse##mnplain")) NewMask(cfg, free, null, "an ellipse");
+            if (ImGui.Selectable("Rectangle##mnrect")) NewMask(cfg, free, null, "a rectangle", mode: 4);
+            ImGui.Separator();
+            foreach (var (qLabel, qKind, qTip) in UiMaskPresets)
             {
-                _maskSel = k;
-                if (cfg.DebugShowMask) { cfg.MaskShowWhich = k + 1; _dirty = true; }
+                if (ImGui.Selectable(qLabel + "##mn" + qLabel)) NewMask(cfg, free, qKind, qLabel.ToLowerInvariant());
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(qTip);
             }
-            ImGui.PopStyleColor();
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(live ? UiMaskMode[Math.Clamp(cfg.MaskMode(k), 0, 3)] : "Not set up yet.");
-            ImGui.SameLine();
+            ImGui.EndPopup();
         }
-        ImGui.NewLine();
 
-        int m = Math.Clamp(_maskSel, 0, 2);
-        char letter = (char)('A' + m);
-        Combo("Shape", "##maskmode" + letter, UiMaskMode, cfg.MaskMode(m), v =>
+        int m = Math.Clamp(_maskSel, 0, PluginConfig.MaskCount - 1);
+        if (cfg.MaskMode(m) != 0)
         {
-            cfg.SetMaskMode(m, v);
-            if ((v == 0 || v == 3) && cfg.PlacingMask == m + 1) cfg.PlacingMask = 0;
-        });
-
-        int md = cfg.MaskMode(m);
-        if (md == 0)
-        {
-            ImGui.TextDisabled("Ellipse \u2014 a face, a shoulder, one pool of interest.");
-            ImGui.TextDisabled("Linear gradient \u2014 half the frame: the top, one side, a diagonal.");
-            ImGui.TextDisabled("Depth band \u2014 a slice of distance. Zones say near or far; this is\nhow you say only the middle.");
             ImGui.Spacing();
-            ImGui.TextDisabled("Off covers everything, so an effect subscribed to a mask that is not\nset up is left alone rather than switched off.");
-            ImGui.Unindent(10f);
-            return;
+            ImGui.Separator();
+            DrawMaskEditor(cfg, m);
         }
 
-        if (md != 3)
+        ImGui.Spacing();
+        ImGui.Separator();
+        if (ImGui.TreeNode("Overlapping own settings###mOverlap"))
         {
-            bool placing = cfg.PlacingMask == m + 1;
-            if (placing) ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.30f, 0.62f, 0.34f, 1f));
-            if (ImGui.Button(placing ? "Placing\u2026 (Esc to finish)##place" : "Place on screen##place", new Vector2(220f, 0)))
+            DrawRegionStacking(cfg);
+            ImGui.TreePop();
+        }
+        if (ImGui.TreeNode((cfg.AnyMaskFrame() ? "Frames (on)" : "Frames") + "###mFrames"))
+        {
+            DrawFramesShared(cfg);
+            ImGui.TreePop();
+        }
+        ImGui.TextDisabled("A transparent PNG can keep just the inside of chosen masks \u2014 Export tab.");
+
+        ImGui.Unindent(10f);
+    }
+
+    private void NewMask(PluginConfig cfg, int slot, PluginConfig.MaskPreset? preset, string what, int mode = 1)
+    {
+        if (slot < 0) return;
+        cfg.ClearMask(slot);
+        if (preset is { } kind) cfg.ApplyMaskPreset(slot, kind);
+        else cfg.SetMaskMode(slot, mode);
+        _maskSel = slot;
+        _status = $"Mask {PluginConfig.MaskLetter(slot)} is {what}. Press {PluginConfig.MaskLetter(slot)} on an effect\u2019s header to aim it there.";
+        _dirty = true;
+    }
+
+    private void DrawMaskRow(PluginConfig cfg, int k)
+    {
+        char letter = PluginConfig.MaskLetter(k);
+        using var id = ImRaii.PushId("maskrow" + k);
+        int mode = cfg.MaskMode(k);
+        bool sel = _maskSel == k;
+
+        var (cr, cg, cb) = cfg.MaskOutColor(k);
+        ImGui.ColorButton("##chip", new Vector4(cr, cg, cb, 1f), ImGuiColorEditFlags.NoTooltip, new Vector2(10f, 20f));
+        ImGui.SameLine(0f, 4f);
+        ImGui.PushStyleColor(ImGuiCol.Button, sel ? new Vector4(0.30f, 0.62f, 0.34f, 1f) : new Vector4(0.22f, 0.22f, 0.24f, 1f));
+        if (ImGui.Button($"{letter}   {UiMaskMode[Math.Clamp(mode, 0, UiMaskMode.Length - 1)]}###sel", new Vector2(170f, 0)))
+        {
+            _maskSel = k;
+            if (cfg.DebugShowMask) { cfg.MaskShowWhich = k + 1; _dirty = true; }
+        }
+        ImGui.PopStyleColor();
+
+        ImGui.SameLine();
+        var tags = new List<string>(4);
+        if (cfg.MaskFrame(k)) tags.Add("frame");
+        if (cfg.MaskInvert(k)) tags.Add("inverted");
+        int own = MaskRegions.Count(cfg.MaskOverrides(k));
+        if (own > 0) tags.Add(own + " own");
+        int users = cfg.MaskSubscribers(k);
+        tags.Add(users == 0 ? "not used yet" : "used by " + users);
+        ImGui.TextDisabled(string.Join(" \u00b7 ", tags));
+
+        ImGui.SameLine();
+        float right = ImGui.GetContentRegionMax().X - 196f;
+        if (right > ImGui.GetCursorPosX()) ImGui.SetCursorPosX(right);
+        bool showing = cfg.DebugShowMask && cfg.MaskShowWhich == k + 1;
+        if (ImGui.SmallButton(showing ? "hide" : "show"))
+        {
+            cfg.DebugShowMask = !showing;
+            cfg.MaskShowWhich = k + 1;
+            if (!showing) { cfg.DebugShowGate = false; cfg.DebugShowDepth = false; cfg.DebugShowClipping = false; cfg.DebugShowMatte = false; }
+            _dirty = true;
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Paint what this mask covers, green over a dimmed frame.");
+        ImGui.SameLine(0f, 2f);
+        using (ImRaii.Disabled(!PluginConfig.MaskPlaceable(mode)))
+        {
+            bool placing = cfg.PlacingMask == k + 1;
+            if (ImGui.SmallButton(placing ? "placing" : "place"))
             {
-                cfg.PlacingMask = placing ? 0 : m + 1;
+                cfg.PlacingMask = placing ? 0 : k + 1;
+                _maskSel = k;
                 _dirty = true;
             }
-            if (placing) ImGui.PopStyleColor();
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(PluginConfig.MaskPlaceable(mode)
+            ? "Drag it onto the shot. The mouse belongs to the mask until Escape."
+            : "Chosen by brightness, colour or depth \u2014 nothing on screen to drag.");
+        ImGui.SameLine(0f, 2f);
+        bool linked = cfg.MaskLinked(k);
+        if (linked) ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.62f, 0.45f, 0.20f, 1f));
+        if (ImGui.SmallButton(linked ? "linked" : "link")) { cfg.SetMaskLinked(k, !linked); _dirty = true; }
+        if (linked) ImGui.PopStyleColor();
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "Linked masks are placed together: place any of them and the whole group moves,\n" +
+            "turns and resizes about its centre \u2014 for a layout made of several masks, like a cross.");
+        ImGui.SameLine(0f, 2f);
+        if (ImGui.SmallButton("delete")) ImGui.OpenPopup("##maskdel");
+        if (ImGui.BeginPopup("##maskdel"))
+        {
+            ImGui.TextUnformatted($"Delete mask {letter}?");
+            ImGui.TextDisabled("Its shape, frame and own settings go, and everything aimed at it\nstops being limited to it. Undo brings it back.");
+            if (ImGui.Button("Delete##maskdelyes"))
+            {
+                if (_regionEdit == k + 1) _regionEdit = 0;
+                cfg.ClearMask(k);
+                _status = $"Mask {letter} deleted.";
+                _dirty = true;
+                ImGui.CloseCurrentPopup();
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Keep it##maskdelno")) ImGui.CloseCurrentPopup();
+            ImGui.EndPopup();
+        }
+    }
+
+    private void DrawMaskEditor(PluginConfig cfg, int m)
+    {
+        char letter = PluginConfig.MaskLetter(m);
+        int md = cfg.MaskMode(m);
+        ImGui.TextColored(AccentCol, $"Mask {letter}");
+        if (cfg.DebugShowMask)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f),
+                $"showing {PluginConfig.MaskLetter(Math.Clamp(cfg.MaskShowWhich, 1, PluginConfig.MaskCount) - 1)} \u2014 hide to see the shot");
+        }
+
+        ImGui.SetNextItemOpen(true, ImGuiCond.Once);
+        if (ImGui.TreeNode("Shape###mshape" + letter))
+        {
+            Combo("Shape", "##maskmode" + letter, UiMaskShapes, Math.Clamp(md - 1, 0, UiMaskShapes.Length - 1), v =>
+            {
+                cfg.SetMaskMode(m, v + 1);
+                if (!PluginConfig.MaskPlaceable(v + 1) && cfg.PlacingMask == m + 1) cfg.PlacingMask = 0;
+            });
+            ImGui.TextDisabled("Reshape as:");
+            for (int q = 0; q < UiMaskPresets.Length; q++)
+            {
+                if (q == 4) ImGui.TextDisabled("      ");
+                ImGui.SameLine(0f, 4f);
+                var (qLabel, qKind, qTip) = UiMaskPresets[q];
+                if (ImGui.SmallButton(qLabel + "##mq" + letter + q))
+                {
+                    cfg.ApplyMaskPreset(m, qKind);
+                    if (!PluginConfig.MaskPlaceable(cfg.MaskMode(m)) && cfg.PlacingMask == m + 1) cfg.PlacingMask = 0;
+                    _dirty = true;
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(qTip);
+            }
+            md = cfg.MaskMode(m);
+            if (!_live.Enabled && PluginConfig.MaskPlaceable(md))
+                ImGui.TextDisabled("Turn live preview on to place it on the shot.");
+            DrawMaskShapeKnobs(cfg, m, md, letter);
+            ImGui.TreePop();
+        }
+
+        if (ImGui.TreeNode((cfg.MaskFrame(m) ? "Frame (on)" : "Frame") + "###mframe" + letter))
+        {
+            bool fr = cfg.MaskFrame(m);
+            if (ImGui.Checkbox("Use as a frame##mkf" + letter, ref fr)) { cfg.SetMaskFrame(m, fr); _dirty = true; }
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(
-                "Drag the mask onto the shot instead of nudging numbers.\n\n" +
-                "While this is on, the mouse belongs to the mask rather than to the\ngpose camera \u2014 they are the same gesture, so only one can have it.\nEscape gives it back.");
-            if (!_live.Enabled)
-                ImGui.TextDisabled("Turn live preview on first, or there is nothing to place it against.");
+                "Turns the mask into a window onto the picture. Outside every frame the\n" +
+                "image is replaced by the fill (Frames, below), and the subject can break out.\n\n" +
+                "Frames add together where plain masks narrow: two panels are two windows,\nand a pixel in either one is a pixel you can see.");
+            if (fr)
+            {
+                if (PluginConfig.MaskHasEdge(md))
+                {
+                    cfg.SetMaskOutline(m, Knob("Outline##mko" + letter, cfg.MaskOutline(m), 0f, 0.03f, 0.004f,
+                        "A line exactly on the edge of the frame, in frame heights. 0 for none.\nIt sits behind a subject breaking out, the way a hand reaches over it.", "%.4f"));
+                    var (orr, og, ob) = cfg.MaskOutColor(m);
+                    var oc = ColorPick("Outline colour##mkoc" + letter, new Vector3(orr, og, ob), MaskOutlineDefault(m));
+                    cfg.SetMaskOutColor(m, oc.X, oc.Y, oc.Z);
+                }
+                else ImGui.TextDisabled("A selection by brightness, colour or depth has no edge to outline.");
+                if (cfg.MaskFeather(m) > 0.03f)
+                    ImGui.TextDisabled("A frame usually wants a hard edge \u2014 lower Feather for a clean panel.");
+            }
+            ImGui.TreePop();
         }
 
-        if (md == 1)
+        int own = MaskRegions.Count(cfg.MaskOverrides(m));
+        if (ImGui.TreeNode((own > 0 ? $"Own settings ({own})" : "Own settings") + "###mown" + letter))
         {
-            cfg.SetMaskCx(m, Knob("Centre X##mk" + letter, cfg.MaskCx(m), 0f, 1f, 0.5f, "Across the frame. 0 = left edge, 1 = right.", "%.3f"));
-            cfg.SetMaskCy(m, Knob("Centre Y##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.45f, "Down the frame. 0 = top, 1 = bottom.", "%.3f"));
-            cfg.SetMaskSize(m, Knob("Radius##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.25f, "Measured in frame HEIGHTS, so the mask keeps its size and its shape\nwhen the export aspect changes.", "%.3f"));
-            cfg.SetMaskEllipse(m, Knob("Squash##mk" + letter, cfg.MaskEllipse(m), 0.15f, 4f, 1.2f, "Height against width. Above 1 is taller than wide \u2014 a head.\nBelow 1 is wider than tall \u2014 a band across the body."));
-            cfg.SetMaskAngle(m, Knob("Rotation##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0f, "Turns the ellipse. Does nothing while Squash is exactly 1, because\na circle has no orientation to turn."));
-        }
-        else if (md == 2)
-        {
-            cfg.SetMaskCx(m, Knob("Edge X##mk" + letter, cfg.MaskCx(m), 0f, 1f, 0.5f, "A point the dividing line passes through.", "%.3f"));
-            cfg.SetMaskCy(m, Knob("Edge Y##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.5f, "A point the dividing line passes through.", "%.3f"));
-            cfg.SetMaskAngle(m, Knob("Direction##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0f, "Turns the divide. The short arrow drawn on screen points INTO the covered\nside, so follow the arrow rather than guessing; 0 covers the left of a\nvertical divide."));
-        }
-        else
-        {
-            cfg.SetMaskCy(m, Knob("Centre depth##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.5f, "The distance the band sits at. Turn on the depth view (Export tab)\nto read off where things in this scene actually are.", "%.3f"));
-            cfg.SetMaskSize(m, Knob("Band width##mk" + letter, cfg.MaskSize(m), 0.005f, 0.5f, 0.25f, "How much distance either side of the centre the band reaches.", "%.3f"));
-            if (!_live.DepthAvailable)
-                ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), "No depth yet \u2014 this mask covers everything until there is.");
+            DrawMaskOwnSettings(cfg, m, letter);
+            ImGui.TreePop();
         }
 
-        cfg.SetMaskFeather(m, Knob("Feather##mk" + letter, cfg.MaskFeather(m), 0.001f, 0.5f, 0.08f, "How far the edge takes to fade out. A hard mask on a photograph reads as a\ncut-out, so this rarely wants to be near zero.", "%.3f"));
+        var users = cfg.MaskUsers(m);
+        if (ImGui.TreeNode($"Used by ({users.Count})###musers{letter}"))
+        {
+            if (users.Count == 0)
+                ImGui.TextDisabled($"Nothing yet \u2014 press {letter} on an effect\u2019s header, beside F / C / B.");
+            foreach (var u in users)
+            {
+                if (ImGui.SmallButton("x##mu" + letter + u)) { cfg.RemoveMaskUser(m, u); _dirty = true; }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Stop limiting this to the mask.");
+                ImGui.SameLine();
+                ImGui.TextUnformatted(MaskUserLabel(u));
+            }
+            ImGui.TreePop();
+        }
+    }
 
+    private static string MaskUserLabel(string name) => name switch
+    {
+        nameof(PluginConfig.ExportCutoutMasks) => "Transparent export",
+        nameof(PluginConfig.ExportExcludeMasks) => "Removed from transparent export",
+        "ZoneGrade" => "Grade",
+        "ZoneCb" => "Color balance",
+        "ZoneTeal" => "Teal & orange",
+        "ZoneSplitTone" => "Split tone",
+        "ZoneGradMap" => "Gradient map",
+        "ZoneBgFill" => "Solid backdrop",
+        "ZoneBackdrop" => "Background style",
+        "ZoneBgPush" => "Background push",
+        "ZoneBgBlur" => "Background blur",
+        "ZoneFinal" => "Final grade",
+        "ZoneNear" or "ZoneNearSoft" => "Foreground split",
+        _ when name.StartsWith("Elem", StringComparison.Ordinal) && int.TryParse(name.AsSpan(4), out int slot) => $"Element layer {slot + 1}",
+        _ when name.StartsWith("Zone", StringComparison.Ordinal) => MaskRegions.Label(name.Substring(4)),
+        _ => name,
+    };
+
+    private void DrawMaskShapeKnobs(PluginConfig cfg, int m, int md, char letter)
+    {
+        switch (md)
+        {
+            case 1:
+                cfg.SetMaskCx(m, Knob("Centre X##mk" + letter, cfg.MaskCx(m), 0f, 1f, 0.5f, "Across the frame. 0 = left edge, 1 = right.", "%.3f"));
+                cfg.SetMaskCy(m, Knob("Centre Y##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.45f, "Down the frame. 0 = top, 1 = bottom.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Radius##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.25f, "Measured in frame HEIGHTS, so the mask keeps its size and its shape\nwhen the export aspect changes.", "%.3f"));
+                cfg.SetMaskEllipse(m, Knob("Squash##mk" + letter, cfg.MaskEllipse(m), 0.15f, 4f, 1.2f, "Height against width. Above 1 is taller than wide \u2014 a head.\nBelow 1 is wider than tall \u2014 a band across the body."));
+                cfg.SetMaskAngle(m, Knob("Rotation##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0f, "Turns the ellipse. Does nothing while Squash is exactly 1, because\na circle has no orientation to turn."));
+                break;
+            case 2:
+                cfg.SetMaskCx(m, Knob("Edge X##mk" + letter, cfg.MaskCx(m), 0f, 1f, 0.5f, "A point the dividing line passes through.", "%.3f"));
+                cfg.SetMaskCy(m, Knob("Edge Y##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.5f, "A point the dividing line passes through.", "%.3f"));
+                cfg.SetMaskAngle(m, Knob("Direction##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0f, "Turns the divide. The short arrow drawn on screen points INTO the covered\nside, so follow the arrow rather than guessing; 0 covers the left of a\nvertical divide."));
+                break;
+            case 3:
+                cfg.SetMaskCy(m, Knob("Centre depth##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.5f, "The distance the band sits at. Turn on Raw depth (Background tab)\nto read off where things in this scene actually are.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Band width##mk" + letter, cfg.MaskSize(m), 0.005f, 0.5f, 0.25f, "How much distance either side of the centre the band reaches.", "%.3f"));
+                if (!_live.DepthAvailable)
+                    ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), "No depth yet \u2014 this mask covers everything until there is.");
+                break;
+            case 4:
+                cfg.SetMaskCx(m, Knob("Centre X##mk" + letter, cfg.MaskCx(m), 0f, 1f, 0.5f, "Across the frame. 0 = left edge, 1 = right.", "%.3f"));
+                cfg.SetMaskCy(m, Knob("Centre Y##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.5f, "Down the frame. 0 = top, 1 = bottom.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Half-width##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.26f, "Half the width, in frame HEIGHTS, so it keeps its shape when the export aspect changes.", "%.3f"));
+                cfg.SetMaskEllipse(m, Knob("Height ratio##mk" + letter, cfg.MaskEllipse(m), 0.1f, 4f, 1f, "Height against width. 1 is a square, which turned 45 degrees is a diamond."));
+                cfg.SetMaskAngle(m, Knob("Rotation##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0f, "Turns the rectangle. 0.785 is 45 degrees."));
+                if (ImGui.SmallButton("Make it a diamond##mkd" + letter))
+                { cfg.SetMaskEllipse(m, 1f); cfg.SetMaskAngle(m, (float)(Math.PI / 4.0)); _dirty = true; }
+                break;
+            case 5:
+            {
+                cfg.SetMaskCx(m, Knob("Centre X##mk" + letter, cfg.MaskCx(m), 0f, 1f, 0.5f, "Across the frame. 0 = left edge, 1 = right.", "%.3f"));
+                cfg.SetMaskCy(m, Knob("Centre Y##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.5f, "Down the frame. 0 = top, 1 = bottom.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Outer radius##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.30f, "The outside of the ring, in frame heights.", "%.3f"));
+                float shownInner = Math.Clamp(cfg.MaskEllipse(m), 0f, 0.95f);
+                float inner = Knob("Inner size##mk" + letter, shownInner, 0f, 0.95f, 0.6f, "The hole, as a fraction of the outer radius. 0 fills it in.");
+                if (inner != shownInner) cfg.SetMaskEllipse(m, inner);
+                break;
+            }
+            case 6:
+                cfg.SetMaskCy(m, Knob("Brightness##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.8f, "Which brightness this selects. High for highlights, low for shadows.\nRead from the shot before any grading, so it does not move as you grade.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Range##mk" + letter, cfg.MaskSize(m), 0.01f, 0.5f, 0.2f, "How far either side of that brightness still counts.", "%.3f"));
+                break;
+            case 7:
+            {
+                float hue = cfg.MaskCx(m);
+                var sw = HueSwatch(hue);
+                ImGui.ColorButton("##huesw" + letter, new Vector4(sw.X, sw.Y, sw.Z, 1f), ImGuiColorEditFlags.NoTooltip, new Vector2(18f, 18f));
+                ImGui.SameLine();
+                ImGui.TextDisabled("the colour this selects");
+                cfg.SetMaskCx(m, Knob("Hue##mk" + letter, hue, 0f, 1f, 0.055f, "Round the colour wheel. 0.05 is skin and warm wood, 0.33 green,\n0.6 sky blue, 0.9 magenta.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Hue range##mk" + letter, cfg.MaskSize(m), 0.005f, 0.5f, 0.06f, "How far round the wheel still counts.", "%.3f"));
+                float shownGreys = Math.Clamp(cfg.MaskEllipse(m), 0f, 1f);
+                float greys = Knob("Ignore greys below##mk" + letter, shownGreys, 0f, 1f, 0.15f, "Grey has a hue only by rounding, so without a floor a colour selection\npicks up every shadow and highlight in the frame.");
+                if (greys != shownGreys) cfg.SetMaskEllipse(m, greys);
+                break;
+            }
+            case 8:
+                ImGui.TextDisabled("The character, by depth: everything nearer than Start (depth) in the\nBackground tab \u2014 the line the backdrop and the cutout already use.");
+                if (!_live.DepthAvailable)
+                    ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), "No depth yet \u2014 this mask covers everything until there is.");
+                break;
+        }
+
+        cfg.SetMaskFeather(m, Knob("Feather##mk" + letter, cfg.MaskFeather(m), 0.001f, 0.5f, 0.08f, "How far the edge takes to fade out. A hard mask on a photograph reads as a\ncut-out, so this rarely wants to be near zero \u2014 unless it is a frame.", "%.3f"));
         bool inv = cfg.MaskInvert(m);
         if (ImGui.Checkbox("Invert##mk" + letter, ref inv)) { cfg.SetMaskInvert(m, inv); _dirty = true; }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(
-            "Everything except the shape. Two masks narrow each other, so inverting is\nhow you reach the regions that narrowing alone cannot make.");
+            "Everything except the shape. Combined with other masks (the button after the\nletters on an effect), inverting reaches the regions a shape alone cannot.");
+    }
 
-        int subs = cfg.MaskSubscribers(m);
-        ImGui.TextDisabled(subs == 0
-            ? "Nothing is using this mask yet — press " + letter + " on an effect’s header."
-            : (subs == 1 ? "1 effect is limited to this mask." : subs + " effects are limited to this mask."));
-
-        bool showing = cfg.DebugShowMask && cfg.MaskShowWhich == m + 1;
-        if (ImGui.Checkbox("Show what this covers##mk" + letter, ref showing))
+    private void DrawFramesShared(PluginConfig cfg)
+    {
+        ImGui.TextDisabled("Masks used as panels: the picture shows through them, the rest is fill,\nand the subject can reach out over the edges.");
+        if (ImGui.Button("Two diamond frames##fr2d", new Vector2(170f, 0)))
         {
-            cfg.DebugShowMask = showing;
-            cfg.MaskShowWhich = m + 1;
-            if (showing) { cfg.DebugShowGate = false; cfg.DebugShowDepth = false; cfg.DebugShowClipping = false; cfg.DebugShowMatte = false; }
+            cfg.SetUpTwoDiamondFrames();
+            _maskSel = 0;
+            _status = "Masks A and B are now two diamond frames. Place them, then pose into them.";
             _dirty = true;
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(
-            "Paints the covered area green over a dimmed frame. A soft edge on a busy\nimage is not something the shot itself will ever show you.");
-        if (cfg.DebugShowMask)
-            ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f),
-                $"Mask view is on, showing {(char)('A' + Math.Clamp(cfg.MaskShowWhich, 1, 3) - 1)} \u2014 untick to see the shot.");
+            "Sets masks A and B up as two overlapping diamonds, each a window with its\n" +
+            "own outline, on paper, with the subject breaking out over both.\n" +
+            "Replaces whatever A and B held. Undo brings them back.");
+        if (!cfg.AnyMaskFrame())
+        {
+            ImGui.TextDisabled("No mask is a frame yet \u2014 tick Use as a frame on one, under Frame.");
+            return;
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Remove frames##frclr", new Vector2(120f, 0))) { cfg.ClearMaskFrames(); _dirty = true; }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Masks stay as they are; they just stop being frames.");
 
-        ImGui.Unindent(10f);
+        var fill = ColorPick("Fill", new Vector3(cfg.MaskFillR, cfg.MaskFillG, cfg.MaskFillB), new Vector3(0.97f, 0.96f, 0.94f));
+        cfg.MaskFillR = fill.X; cfg.MaskFillG = fill.Y; cfg.MaskFillB = fill.Z;
+        cfg.MaskFillA = Knob("Fill opacity##frfa", cfg.MaskFillA, 0f, 1f, 1f,
+            "1 replaces everything outside the frames. Lower lets the scene show through,\nfor panels that are emphasised rather than cut out.");
+        bool bo = cfg.MaskBreakOut;
+        if (ImGui.Checkbox("Subject breaks out of the frames##frbo", ref bo)) { cfg.MaskBreakOut = bo; _dirty = true; }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "The character stays visible outside the frames too, in front of the fill and\n" +
+            "the outline \u2014 a hand reaching over the edge of its own panel.\n\n" +
+            "Uses the depth split, the same one the cutout uses.");
+        if (bo && !_live.DepthAvailable)
+            ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), "No depth yet \u2014 breaking out needs it.");
+        if (!bo)
+        {
+            bool under = cfg.MaskOutlineBehind;
+            if (ImGui.Checkbox("Outlines behind the characters##frunder", ref under)) { cfg.MaskOutlineBehind = under; _dirty = true; }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+                "The characters are cut at the frames, but inside them the outlines pass\n" +
+                "behind the characters instead of across them.");
+        }
+
+        bool stacked = cfg.MaskFramesStacked;
+        if (ImGui.Checkbox("Upper frames cover lower frames\u2019 outlines##frstack", ref stacked)) { cfg.MaskFramesStacked = stacked; _dirty = true; }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "Frames lie on each other like cards: where a lower frame\u2019s outline passes\n" +
+            "inside a frame above it, that part of the line is hidden.");
+        var frameOrder = cfg.MaskFrameStack();
+        if (stacked && frameOrder.Length >= 2)
+        {
+            ImGui.TextDisabled("Order, top first:");
+            for (int r = frameOrder.Length - 1; r >= 0; r--)
+            {
+                int i = frameOrder[r];
+                char fl = PluginConfig.MaskLetter(i);
+                using (ImRaii.Disabled(r == frameOrder.Length - 1))
+                    if (ImGui.SmallButton("up##frup" + fl)) { cfg.MoveMaskFrame(i, true); _dirty = true; }
+                ImGui.SameLine(0f, 2f);
+                using (ImRaii.Disabled(r == 0))
+                    if (ImGui.SmallButton("down##frdn" + fl)) { cfg.MoveMaskFrame(i, false); _dirty = true; }
+                ImGui.SameLine();
+                var (fr, fg, fb) = cfg.MaskOutColor(i);
+                ImGui.ColorButton("##frc" + fl, new Vector4(fr, fg, fb, 1f), ImGuiColorEditFlags.NoTooltip, new Vector2(10f, 16f));
+                ImGui.SameLine(0f, 4f);
+                ImGui.TextUnformatted($"Mask {fl}  {UiMaskMode[Math.Clamp(cfg.MaskMode(i), 0, UiMaskMode.Length - 1)]}");
+            }
+        }
+    }
+
+    private static readonly string[] UiRegionOverlap = { "Top one wins", "Combine their settings", "Cancel each other" };
+
+    private void DrawRegionStacking(PluginConfig cfg)
+    {
+        var active = cfg.MaskRegionStack().Where(cfg.MaskRegionActive).ToArray();
+        if (active.Length < 2)
+        {
+            ImGui.TextDisabled("This matters once two masks have settings of their own.");
+            return;
+        }
+
+        Combo("Overlap", "##rgoverlap", UiRegionOverlap, Math.Clamp(cfg.MaskRegionOverlap, 0, 2), v => cfg.MaskRegionOverlap = v);
+        ImGui.TextDisabled(cfg.MaskRegionOverlap switch
+        {
+            1 => "In the overlap both sets of settings apply together. Where both change the\nsame setting, the one higher in the order decides. Each overlap renders once more.",
+            2 => "In the overlap neither applies, and the whole image shows through.",
+            _ => "In the overlap only the one higher in the order applies.",
+        });
+        if (cfg.MaskRegionOverlap == 1 && active.Length > MaskRegions.MaxCombined)
+            ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f),
+                $"Combine handles up to {MaskRegions.MaxCombined} masks with own settings — with {active.Length}, the top one wins.");
+        if (cfg.MaskRegionOverlap == 2) return;
+
+        ImGui.TextDisabled("Order, top first:");
+        for (int r = active.Length - 1; r >= 0; r--)
+        {
+            int i = active[r];
+            char L = (char)('A' + i);
+            using (ImRaii.Disabled(r == active.Length - 1))
+                if (ImGui.SmallButton("up##rgup" + L)) { cfg.MoveMaskRegion(i, true); _dirty = true; }
+            ImGui.SameLine(0f, 2f);
+            using (ImRaii.Disabled(r == 0))
+                if (ImGui.SmallButton("down##rgdn" + L)) { cfg.MoveMaskRegion(i, false); _dirty = true; }
+            ImGui.SameLine();
+            int n = MaskRegions.Count(cfg.MaskOverrides(i));
+            ImGui.TextUnformatted($"Mask {L}  \u2014 {n} setting{(n == 1 ? "" : "s")} of its own");
+        }
+    }
+
+    private static Vector3 MaskOutlineDefault(int m)
+    {
+        var (r, g, b) = PluginConfig.MaskOutlineDefault(m);
+        return new Vector3(r, g, b);
+    }
+
+    private static Vector3 HueSwatch(float h)
+    {
+        h = h - (float)Math.Floor(h);
+        float r = Math.Clamp(Math.Abs(h * 6f - 3f) - 1f, 0f, 1f);
+        float g = Math.Clamp(2f - Math.Abs(h * 6f - 2f), 0f, 1f);
+        float b = Math.Clamp(2f - Math.Abs(h * 6f - 4f), 0f, 1f);
+        return new Vector3(r, g, b);
+    }
+
+    private int _regionEdit;
+    private int _edMask = -1;
+    private readonly MaskRegions.EditSession _regionSession = new();
+
+    private PluginConfig BeginRegionEdit(PluginConfig cfg)
+    {
+        _edMask = -1;
+        if (_regionEdit < 1 || _regionEdit > PluginConfig.MaskCount) { _regionEdit = 0; return cfg; }
+        int m = _regionEdit - 1;
+        if (cfg.MaskMode(m) == 0)
+        {
+            _regionEdit = 0;
+            _status = $"Mask {(char)('A' + m)} is off, so editing is back on the whole image.";
+            return cfg;
+        }
+        DrawRegionBanner(cfg, m);
+        if (_regionEdit != m + 1) return cfg;
+        _regionSession.Begin(cfg, cfg.MaskOverrides(m));
+        _edMask = m;
+        return _regionSession.Variant;
+    }
+
+    private void EndRegionEdit(PluginConfig cfg)
+    {
+        if (_edMask < 0) return;
+        int m = _edMask;
+        _edMask = -1;
+        var next = _regionSession.End(cfg, cfg.MaskOverrides(m));
+        if (next != null && !string.Equals(next, cfg.MaskOverrides(m), StringComparison.Ordinal))
+        {
+            cfg.SetMaskOverrides(m, next);
+            _dirty = true;
+        }
+    }
+
+    private void DrawRegionBanner(PluginConfig cfg, int m)
+    {
+        char L = (char)('A' + m);
+        int n = MaskRegions.Count(cfg.MaskOverrides(m));
+        ImGui.Separator();
+        ImGui.TextColored(new Vector4(0.45f, 0.95f, 0.55f, 1f), $"\u25a0  Editing inside mask {L}");
+        ImGui.SameLine();
+        ImGui.TextDisabled(n == 0 ? "\u2014 nothing differs yet" : n == 1 ? "\u2014 1 setting differs" : $"\u2014 {n} settings differ");
+        ImGui.TextDisabled("The controls below change the picture only inside this mask. Looks, masks,\ntext, elements, export, undo and saving still act on the whole image.");
+        if (!cfg.MaskRegionOn(m) || cfg.MaskRegionMix(m) <= 0f)
+            ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), $"Mask {L}\u2019s own settings are switched off, so nothing changed here will show.");
+
+        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.30f, 0.62f, 0.34f, 1f));
+        if (ImGui.Button("Back to whole image##rgback", new Vector2(170f, 0))) _regionEdit = 0;
+        ImGui.PopStyleColor();
+        ImGui.SameLine();
+        bool showing = cfg.DebugShowMask && cfg.MaskShowWhich == m + 1;
+        if (ImGui.Button((showing ? "Hide mask " : "Show mask ") + L + "##rgshow", new Vector2(110f, 0)))
+        {
+            cfg.DebugShowMask = !showing;
+            cfg.MaskShowWhich = m + 1;
+            if (!showing) { cfg.DebugShowGate = false; cfg.DebugShowDepth = false; cfg.DebugShowClipping = false; cfg.DebugShowMatte = false; }
+            _dirty = true;
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "Where the mask reaches. While the mask view is on it is all you see,\nso hide it again to see what the settings inside do.");
+        ImGui.SameLine();
+        using (ImRaii.Disabled(n == 0))
+            if (ImGui.Button($"Clear inside {L}##rgclr", new Vector2(110f, 0))) { cfg.SetMaskOverrides(m, ""); _dirty = true; }
+        ImGui.Separator();
+    }
+
+    private void DrawMaskOwnSettings(PluginConfig cfg, int m, char letter)
+    {
+        var names = MaskRegions.Names(cfg.MaskOverrides(m));
+        bool editing = _regionEdit == m + 1;
+        if (names.Length == 0 && !editing)
+            ImGui.TextDisabled("Inside this mask the picture can have its own settings \u2014 the same effects\nwith other values: a brighter face, a black and white panel, a warmer half.");
+
+        if (editing) ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.30f, 0.62f, 0.34f, 1f));
+        if (ImGui.Button(editing ? $"Editing inside {letter} \u2014 back to whole image##rgtog{letter}"
+                                 : $"Edit inside {letter}\u2026##rgtog{letter}", new Vector2(300f, 0)))
+        {
+            _regionEdit = editing ? 0 : m + 1;
+            _status = editing ? "Editing the whole image."
+                              : $"Editing inside mask {letter}: every effect control now changes only what is inside it.";
+        }
+        if (editing) ImGui.PopStyleColor();
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "Switches every effect control, in every tab, to act inside this mask only.\n" +
+            "What you change becomes this mask\u2019s own settings; everything you leave\n" +
+            "alone keeps following the whole image.\n\nA banner at the top of the window says which you are editing.");
+
+        ImGui.TextDisabled("Quick:");
+        void Q(string label, string tip, Action<PluginConfig> change)
+        {
+            ImGui.SameLine(0f, 4f);
+            if (ImGui.SmallButton(label + "##rq" + letter)) EditInside(cfg, m, change);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(tip);
+        }
+        Q("Brighter", "Half a stop brighter inside this mask. Press again for more.", c => c.Exposure = Math.Clamp(c.Exposure + 0.5f, -2f, 2f));
+        Q("Darker", "Half a stop darker inside this mask.", c => c.Exposure = Math.Clamp(c.Exposure - 0.5f, -2f, 2f));
+        Q("Black & white", "No colour inside this mask.", c => c.Saturation = -1f);
+        Q("Warmer", "Warmer inside this mask. Press again for more.", c => c.Temperature = Math.Clamp(c.Temperature + 0.1f, -0.3f, 0.3f));
+        Q("Cooler", "Cooler inside this mask.", c => c.Temperature = Math.Clamp(c.Temperature - 0.1f, -0.3f, 0.3f));
+
+        if (names.Length == 0) return;
+
+        bool on = cfg.MaskRegionOn(m);
+        if (ImGui.Checkbox($"Show them##rgon{letter}", ref on)) { cfg.SetMaskRegionOn(m, on); _dirty = true; }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Off compares against the whole image without losing anything.");
+        ImGui.SameLine();
+        if (ImGui.SmallButton($"Clear##rgclr2{letter}")) SetOverridesNow(cfg, m, "");
+        cfg.SetMaskRegionMix(m, Knob($"Strength##rgmix{letter}", cfg.MaskRegionMix(m), 0f, 1f, 1f,
+            "How fully the mask\u2019s own settings replace the whole image inside it.\n1 is completely; lower blends the two."));
+        if (ImGui.TreeNode((names.Length == 1 ? "1 setting differs" : names.Length + " settings differ") + "###rglist" + letter))
+        {
+            foreach (var n in names)
+            {
+                if (ImGui.SmallButton("x##rgx" + letter + n))
+                    SetOverridesNow(cfg, m, MaskRegions.Remove(cfg.MaskOverrides(m), n));
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Stop differing: follow the whole image again.");
+                ImGui.SameLine();
+                ImGui.TextUnformatted(MaskRegions.Label(n));
+            }
+            ImGui.TreePop();
+        }
+        ImGui.TextDisabled("Each mask with its own settings renders the shot once more.");
+    }
+
+    private void EditInside(PluginConfig cfg, int m, Action<PluginConfig> change)
+    {
+        if (_edMask == m) { change(_regionSession.Variant); _dirty = true; return; }
+        var s = new MaskRegions.EditSession();
+        s.Begin(cfg, cfg.MaskOverrides(m));
+        change(s.Variant);
+        var next = s.End(cfg, cfg.MaskOverrides(m));
+        if (next != null) { cfg.SetMaskOverrides(m, next); _dirty = true; }
+    }
+
+    private void SetOverridesNow(PluginConfig cfg, int m, string ov)
+    {
+        cfg.SetMaskOverrides(m, ov);
+        if (_edMask == m) _regionSession.Begin(cfg, ov);
+        _dirty = true;
     }
 
     private void DrawFinder(PluginConfig cfg)
@@ -2790,8 +3329,8 @@ public sealed class MainWindow : Window, IDisposable
                 ImGui.SameLine();
                 if (ImGui.GetCursorPosX() > avail - 90f) { ImGui.NewLine(); ImGui.TextDisabled("     "); ImGui.SameLine(); }
                 if (ImGui.SmallButton(on[i].Label + "##on" + i)) _search = on[i].Label;
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Click to find this group");
             }
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Click to find this group");
         }
         if (_filter == FilterMode.Favorites && cfg.Pinned.Count == 0)
             ImGui.TextDisabled("Nothing pinned yet — right-click a group header to pin it here.");
@@ -2831,6 +3370,17 @@ public sealed class MainWindow : Window, IDisposable
         "EnFrame" => "Frame & corners",
         "EnText" => "Text markers",
         "EnElements" => "Elements",
+        "EnColorBalance" => "Color balance",
+        "EnTealOrange" => "Teal & orange",
+        "EnSplitTone" => "Split tone",
+        "EnGradMap" => "Gradient map",
+        "EnBackdrop" => "Background style",
+        "EnTiltShift" => "Tilt-shift",
+        "EnFinalGrade" => "Final grade",
+        "EnBacklight" => "Body backlight",
+        "EnHalo" => "Backdrop halo",
+        "EnShadow" => "Contact shadow",
+        "EnGround" => "Ground shadow",
         _ => prop.Substring(2),
     };
 
@@ -2848,7 +3398,7 @@ public sealed class MainWindow : Window, IDisposable
     private void DrawAllBodies(PluginConfig cfg)
     {
         LookBody(cfg); CameraBody(cfg); LightBody(cfg); SubjectBody(cfg);
-        BackgroundBody(cfg); FxBody(cfg); OverlaysBody(cfg);
+        BackgroundBody(cfg); FxBody(cfg); OverlaysBody(Plugin.Config);
     }
 
     private readonly struct GroupScope : IDisposable
@@ -2861,7 +3411,7 @@ public sealed class MainWindow : Window, IDisposable
 
     private Vector3 ColorPick(string label, Vector3 v, Vector3 def)
     {
-        ImGui.TextUnformatted(label);
+        ImGui.TextUnformatted(Shown(label));
         ImGui.SameLine(130f);
         if (ImGui.ColorEdit3("##" + label, ref v, ImGuiColorEditFlags.NoInputs)) _dirty = true;
         if (ImGui.IsItemClicked(ImGuiMouseButton.Right)) { v = def; _dirty = true; }
@@ -3032,13 +3582,18 @@ public sealed class MainWindow : Window, IDisposable
                     {
                         if (!ok || string.IsNullOrWhiteSpace(path)) return;
                         PushUndo(cfg);
+                        string? beforeImport = cfg.LoadFromBase ? LookStore.Capture(cfg) : null;
                         if (cfg.LoadFromBase) cfg.ResetLook();
                         if (LookStore.LoadFromFile(path, cfg, (LookStore.Part)_applyPart, out var impErr))
                         {
-                            _dirty = true;
+                            SaveSoon();
                             _status = $"Imported from \u2018{Path.GetFileName(path)}\u2019. Save it to keep it.";
                         }
-                        else _status = impErr;
+                        else
+                        {
+                            if (beforeImport != null) LookStore.Apply(beforeImport, cfg, LookStore.Part.All);
+                            _status = impErr;
+                        }
                     });
             }
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(
@@ -3255,11 +3810,13 @@ public sealed class MainWindow : Window, IDisposable
             var n = _pendingLoad;
             _pendingLoad = "";
             var part = (LookStore.Part)_applyPart;
+            string? beforeLoad = cfg.LoadFromBase ? LookStore.Capture(cfg) : null;
             if (cfg.LoadFromBase) cfg.ResetLook();
             if (LookStore.Load(n, cfg, part, out int applied))
             {
                 if (applied == 0)
                 {
+                    if (beforeLoad != null) LookStore.Apply(beforeLoad, cfg, LookStore.Part.All);
                     _status = $"\u2018{n}\u2019 has nothing in the {UiApplyPart[_applyPart]} part.";
                 }
                 else
@@ -3275,14 +3832,18 @@ public sealed class MainWindow : Window, IDisposable
                         : $"Loaded the {UiApplyPart[_applyPart].ToLowerInvariant()} from \u2018{n}\u2019.";
                 }
             }
-            else _status = $"Could not load \u2018{n}\u2019.";
+            else
+            {
+                if (beforeLoad != null) LookStore.Apply(beforeLoad, cfg, LookStore.Part.All);
+                _status = $"Could not load \u2018{n}\u2019.";
+            }
         }
 
     }
 
     private void GateToggle(PluginConfig cfg, string id)
     {
-        if (!ReferenceEquals(cfg, Plugin.Config)) return;
+        if (ReferenceEquals(cfg, _scratch)) return;
         var g = Plugin.Config.DebugShowGate;
         if (ImGui.Checkbox("Show what this covers##" + id, ref g))
         {
@@ -3336,6 +3897,7 @@ public sealed class MainWindow : Window, IDisposable
 
     private void Undo(PluginConfig cfg)
     {
+        if (_savePending) PushUndo(cfg);
         if (_undo.Count == 0) { _status = "Nothing to undo."; return; }
         _redo.Add(LookStore.Capture(cfg));
         var j = _undo[_undo.Count - 1];
@@ -3348,6 +3910,7 @@ public sealed class MainWindow : Window, IDisposable
 
     private void Redo(PluginConfig cfg)
     {
+        if (_savePending) PushUndo(cfg);
         if (_redo.Count == 0) { _status = "Nothing to redo."; return; }
         _undo.Add(LookStore.Capture(cfg));
         var j = _redo[_redo.Count - 1];

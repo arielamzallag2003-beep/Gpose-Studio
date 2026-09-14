@@ -57,6 +57,7 @@ internal static class ElementImages
     public static bool Import(string source, out string storedName, out string error)
     {
         storedName = ""; error = "";
+        string? tmp = null;
         try
         {
             if (string.IsNullOrWhiteSpace(source) || !File.Exists(source))
@@ -73,7 +74,7 @@ internal static class ElementImages
             var name = UniqueName(n => File.Exists(Path.Combine(root, n)), Path.GetFileName(source));
             var dest = Path.Combine(root, name);
 
-            var tmp = dest + ".tmp";
+            tmp = dest + ".tmp";
             File.Copy(source, tmp, overwrite: true);
             File.Move(tmp, dest, overwrite: true);
 
@@ -82,6 +83,7 @@ internal static class ElementImages
         }
         catch (Exception ex)
         {
+            try { if (tmp != null && File.Exists(tmp)) File.Delete(tmp); } catch {  }
             error = "Could not copy that image: " + ex.Message;
             return false;
         }
