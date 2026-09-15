@@ -232,7 +232,11 @@ public sealed class MainWindow : Window, IDisposable
             if (ImGui.Button($"Clear inside {(char)('A' + rm)}##rsin", new Vector2(96f, 0))) { cfg.SetMaskOverrides(rm, ""); _dirty = true; }
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("Forget this mask\u2019s own settings; inside it follows the whole image again.");
         }
-        else if (ImGui.Button("Reset look", new Vector2(96f, 0))) { cfg.ResetLook(); _dirty = true; }
+        else
+        {
+            if (ImGui.Button("Reset look", new Vector2(96f, 0))) { PushUndo(cfg); cfg.ResetLook(keepPlaced: false); _dirty = true; }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Everything back to defaults, element layers and captions included.\nUndo brings it back.");
+        }
 
         var bypass = cfg.Bypass;
         if (ImGui.Checkbox("Bypass — show the original (A/B compare)", ref bypass)) { cfg.Bypass = bypass; _dirty = true; }
@@ -2268,6 +2272,25 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.SameLine();
             MaskToggles("Elem" + slot, () => cfg.ElemMasks(slot), v => cfg.SetElemMasks(slot, v));
             ImGui.NewLine();
+
+            int fm = cfg.ElemFollowMask(slot);
+            ImGui.TextUnformatted("Follow"); ImGui.SameLine(90f);
+            ImGui.PushItemWidth(-1f);
+            if (ImGui.BeginCombo("##efollow", fm < 0 ? "— nothing —" : "Mask " + PluginConfig.MaskLetter(fm)))
+            {
+                if (ImGui.Selectable("— nothing —", fm < 0)) { PushUndo(cfg); cfg.SetElemFollowMask(slot, -1); _dirty = true; }
+                for (int m = 0; m < PluginConfig.MaskCount; m++)
+                {
+                    if (!PluginConfig.MaskPlaceable(cfg.MaskMode(m))) continue;
+                    if (ImGui.Selectable("Mask " + PluginConfig.MaskLetter(m), fm == m)) { PushUndo(cfg); cfg.SetElemFollowMask(slot, m); _dirty = true; }
+                }
+                ImGui.EndCombo();
+            }
+            ImGui.PopItemWidth();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+                "Moves, turns and resizes this layer along with a mask, keeping where it sits\n" +
+                "relative to it: a ring around a disc stays around the disc wherever you place it.\n" +
+                "Works however the mask is moved, linked group included.");
         }
 
         bool front = cfg.Elem[b + 13] > 0.5f;
@@ -2678,7 +2701,11 @@ public sealed class MainWindow : Window, IDisposable
 
     private static readonly string[] UiMaskMode =
         { "Off", "Ellipse", "Linear gradient", "Depth band", "Rectangle", "Ring",
-          "Brightness range", "Colour range", "Subject (depth)" };
+          "Brightness range", "Colour range", "Subject (depth)", "Polygon", "Star",
+          "Wedge (cone of light)", "Stripes", "Cross", "Subject edge", "Saturation range", "Noise patches" };
+    private static readonly string[] UiMaskEdge = { "Across the edge", "Inward (nothing past the edge)", "Outward (the whole inside)" };
+    private static readonly string[] UiMaskDepthLimit = { "Anywhere", "Only on the subject", "Only behind the subject" };
+    private static readonly string[] UiMaskMirror = { "No copy", "Mirrored left-right", "Mirrored top-bottom", "Both (four copies)" };
     private static readonly string[] UiMaskShapes = UiMaskMode[1..];
     private static readonly (string Label, PluginConfig.MaskPreset Kind, string Tip)[] UiMaskPresets =
     {
@@ -2690,6 +2717,14 @@ public sealed class MainWindow : Window, IDisposable
         ("Highlights", PluginConfig.MaskPreset.Highlights, "The bright parts of the shot, whatever shape they are."),
         ("Shadows", PluginConfig.MaskPreset.Shadows, "The dark parts of the shot."),
         ("Skin tones", PluginConfig.MaskPreset.SkinTones, "Everything near the hue of skin, ignoring greys. Check it with\nShow \u2014 warm wood and gold will be caught too."),
+        ("Hexagon", PluginConfig.MaskPreset.Hexagon, "A six-sided panel. Sides go from a triangle to twelve."),
+        ("Star", PluginConfig.MaskPreset.Star, "A five-pointed star, point up. Points and how deep the notches go are yours."),
+        ("Light cone", PluginConfig.MaskPreset.LightCone, "A wedge opening from above the top-left corner: light through a window.\nAim a glow, a brighter grade or a warm tint at it."),
+        ("Stripes", PluginConfig.MaskPreset.Stripes, "Slanted bands across the frame: blinds, bars, a halftone of light and shade."),
+        ("Cross", PluginConfig.MaskPreset.Cross, "Two bars crossing. Lengthen the upright for a Latin cross."),
+        ("Subject edge", PluginConfig.MaskPreset.SubjectEdge, "A band along the character\u2019s silhouette \u2014 outside it for a halo,\ninside it for a rim. Follows the pose; nothing to place."),
+        ("Vivid colours", PluginConfig.MaskPreset.Vivid, "Everything strongly coloured, whatever the hue. Aimed at a desaturate and\ninverted, it keeps the colour only where there was a lot of it."),
+        ("Patches", PluginConfig.MaskPreset.Patches, "Soft organic patches of noise \u2014 dappled light, uneven wear, mist."),
     };
 
     private void DrawMasksGroup(PluginConfig cfg)
@@ -2727,6 +2762,36 @@ public sealed class MainWindow : Window, IDisposable
             {
                 if (ImGui.Selectable(qLabel + "##mn" + qLabel)) NewMask(cfg, free, qKind, qLabel.ToLowerInvariant());
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip(qTip);
+            }
+            ImGui.EndPopup();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Templates…###mtpl", new Vector2(110f, 0))) ImGui.OpenPopup("##masktpl");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "Ready-made layouts of several masks working together: panels, light, grading.\n" +
+            "They set up masks, frames and the masks’ own settings only, never the rest of\n" +
+            "the look. Replaces all eight masks; Undo brings yours back.");
+        if (ImGui.BeginPopup("##masktpl"))
+        {
+            string group = "";
+            foreach (var info in MaskTemplates.All)
+            {
+                if (info.Group != group)
+                {
+                    if (group.Length > 0) ImGui.Separator();
+                    group = info.Group;
+                    ImGui.TextDisabled(group);
+                }
+                if (ImGui.Selectable(info.Name + "##tpl" + info.Kind))
+                {
+                    PushUndo(cfg);
+                    MaskTemplates.Apply(cfg, info.Kind);
+                    _maskSel = 0;
+                    _regionEdit = 0;
+                    _status = $"Masks set up as {info.Name}. Place them on the shot; Undo brings your masks back.";
+                    _dirty = true;
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(info.Tip);
             }
             ImGui.EndPopup();
         }
@@ -2872,7 +2937,7 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.TextDisabled("Reshape as:");
             for (int q = 0; q < UiMaskPresets.Length; q++)
             {
-                if (q == 4) ImGui.TextDisabled("      ");
+                if (q > 0 && q % 4 == 0) ImGui.TextDisabled("      ");
                 ImGui.SameLine(0f, 4f);
                 var (qLabel, qKind, qTip) = UiMaskPresets[q];
                 if (ImGui.SmallButton(qLabel + "##mq" + letter + q))
@@ -2907,6 +2972,10 @@ public sealed class MainWindow : Window, IDisposable
                     var (orr, og, ob) = cfg.MaskOutColor(m);
                     var oc = ColorPick("Outline colour##mkoc" + letter, new Vector3(orr, og, ob), MaskOutlineDefault(m));
                     cfg.SetMaskOutColor(m, oc.X, oc.Y, oc.Z);
+                    cfg.SetMaskOutGlow(m, Knob("Glow##mkg" + letter, cfg.MaskOutGlow(m), 0f, 1f, 0f,
+                        "The outline colour falling away either side of the line: a neon edge.\nWorks with no outline at all, as a soft glow along the frame."));
+                    cfg.SetMaskShadow(m, Knob("Drop shadow##mksh" + letter, cfg.MaskShadow(m), 0f, 1f, 0f,
+                        "A shadow down and to the right of the frame, over the fill, so the panel\nreads as lying on the page rather than cut out of it."));
                 }
                 else ImGui.TextDisabled("A selection by brightness, colour or depth has no edge to outline.");
                 if (cfg.MaskFeather(m) > 0.03f)
@@ -2953,6 +3022,7 @@ public sealed class MainWindow : Window, IDisposable
         "ZoneBgBlur" => "Background blur",
         "ZoneFinal" => "Final grade",
         "ZoneNear" or "ZoneNearSoft" => "Foreground split",
+        _ when name.StartsWith("ElemFollow", StringComparison.Ordinal) && int.TryParse(name.AsSpan(10), out int fslot) => $"Element layer {fslot + 1} (follows it)",
         _ when name.StartsWith("Elem", StringComparison.Ordinal) && int.TryParse(name.AsSpan(4), out int slot) => $"Element layer {slot + 1}",
         _ when name.StartsWith("Zone", StringComparison.Ordinal) => MaskRegions.Label(name.Substring(4)),
         _ => name,
@@ -2960,6 +3030,32 @@ public sealed class MainWindow : Window, IDisposable
 
     private void DrawMaskShapeKnobs(PluginConfig cfg, int m, int md, char letter)
     {
+        void Centre(string what, float defY, float lo = 0f, float hi = 1f)
+        {
+            cfg.SetMaskCx(m, Knob(what + " X##mk" + letter, cfg.MaskCx(m), lo, hi, 0.5f, "Across the frame. 0 = left edge, 1 = right.", "%.3f"));
+            cfg.SetMaskCy(m, Knob(what + " Y##mk" + letter, cfg.MaskCy(m), lo, hi, defY, "Down the frame. 0 = top, 1 = bottom.", "%.3f"));
+        }
+        void Rotation(string tip) => cfg.SetMaskAngle(m, Knob("Rotation##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0f, tip));
+        void Squash(string label, string tip)
+        {
+            float shown = Math.Clamp(cfg.MaskEllipse(m), 0.15f, 4f);
+            float v = Knob(label + "##mkq" + letter, shown, 0.15f, 4f, 1f, tip);
+            if (v != shown) cfg.SetMaskEllipse(m, v);
+        }
+        void Sides(string label, float def, string tip)
+        {
+            float shown = MaskGeometry.Sides(cfg.MaskSides(m));
+            float v = MathF.Round(Knob(label + "##mkn" + letter, shown, 3f, 12f, def, tip, "%.0f"));
+            if (v != shown) cfg.SetMaskSides(m, v);
+        }
+        void Detail(string label, float lo, float hi, float def, string tip)
+        {
+            float shown = Math.Clamp(MaskGeometry.Detail(cfg.MaskDetail(m)), lo, hi);
+            float v = Knob(label + "##mkd" + letter, shown, lo, hi, def, tip, "%.3f");
+            if (v != shown) cfg.SetMaskDetail(m, v);
+        }
+        void Round() => cfg.SetMaskRound(m, Knob("Corner round##mkr" + letter, cfg.MaskRound(m), 0f, 1f, 0f, "Rounds the corners. The sides stay where they are."));
+
         switch (md)
         {
             case 1:
@@ -2986,6 +3082,7 @@ public sealed class MainWindow : Window, IDisposable
                 cfg.SetMaskSize(m, Knob("Half-width##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.26f, "Half the width, in frame HEIGHTS, so it keeps its shape when the export aspect changes.", "%.3f"));
                 cfg.SetMaskEllipse(m, Knob("Height ratio##mk" + letter, cfg.MaskEllipse(m), 0.1f, 4f, 1f, "Height against width. 1 is a square, which turned 45 degrees is a diamond."));
                 cfg.SetMaskAngle(m, Knob("Rotation##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0f, "Turns the rectangle. 0.785 is 45 degrees."));
+                Round();
                 if (ImGui.SmallButton("Make it a diamond##mkd" + letter))
                 { cfg.SetMaskEllipse(m, 1f); cfg.SetMaskAngle(m, (float)(Math.PI / 4.0)); _dirty = true; }
                 break;
@@ -3022,13 +3119,105 @@ public sealed class MainWindow : Window, IDisposable
                 if (!_live.DepthAvailable)
                     ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), "No depth yet \u2014 this mask covers everything until there is.");
                 break;
+            case 9:
+                Centre("Centre", 0.5f);
+                cfg.SetMaskSize(m, Knob("Radius##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.24f, "To the corners, in frame heights.", "%.3f"));
+                Sides("Sides", 6f, "3 is a triangle standing on its base, 4 a square, 6 a hexagon.");
+                Squash("Squash", "Height against width.");
+                Rotation("Turns the polygon. A triangle turned by 3.14 points down.");
+                Round();
+                break;
+            case 10:
+                Centre("Centre", 0.45f);
+                cfg.SetMaskSize(m, Knob("Radius##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.24f, "To the tips of the points, in frame heights.", "%.3f"));
+                Sides("Points", 5f, "How many points.");
+                Detail("Inner radius", 0.05f, 0.98f, 0.45f, "How deep the notches between the points go, as a fraction of the radius.\nLow is a spiky star, high is nearly a polygon.");
+                Squash("Squash", "Height against width.");
+                Rotation("Turns the star. One point starts straight up.");
+                Round();
+                break;
+            case 11:
+                Centre("Apex", 0f, -0.5f, 1.5f);
+                cfg.SetMaskAngle(m, Knob("Direction##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 1.0f, "Which way it opens. 0 is to the right, 1.57 straight down."));
+                Detail("Opening", 0.01f, 1f, 0.10f, "How wide, as a fraction of a half turn either side: 0.1 is 18 degrees each way,\n0.5 a half plane. An apex off the frame with a narrow opening is a beam.");
+                cfg.SetMaskSize(m, Knob("Reach##mk" + letter, cfg.MaskSize(m), 0.05f, 3f, 1.4f, "How far from the apex it ends, in frame heights. Past the frame is endless.", "%.3f"));
+                break;
+            case 12:
+                Centre("Through", 0.5f);
+                cfg.SetMaskAngle(m, Knob("Direction##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0.35f, "The way ACROSS the bands. 0 gives vertical bands."));
+                cfg.SetMaskSize(m, Knob("Spacing##mk" + letter, cfg.MaskSize(m), 0.01f, 1f, 0.12f, "From one band to the next, in frame heights.", "%.3f"));
+                Detail("Band width", 0.02f, 0.98f, 0.35f, "How much of each step is band.");
+                break;
+            case 13:
+                Centre("Centre", 0.5f);
+                cfg.SetMaskSize(m, Knob("Arm reach##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.26f, "From the centre to the end of the crossbar, in frame heights.", "%.3f"));
+                Squash("Upright length", "The upright against the crossbar. Above 1 is a Latin cross.");
+                Detail("Thickness", 0.02f, 1f, 0.5f, "How thick the bars are against their reach.");
+                Rotation("Turns the cross. 0.785 is a saltire.");
+                Round();
+                break;
+            case 14:
+                ImGui.TextDisabled("Along the character\u2019s silhouette, by depth. Nothing to place: it follows the pose.");
+                cfg.SetMaskSize(m, Knob("Width##mk" + letter, cfg.MaskSize(m), 0.002f, 0.08f, 0.015f, "How far from the silhouette it reaches, in frame heights.", "%.3f"));
+                Detail("Side", 0.02f, 1f, 0.5f, "Low keeps the outside, a halo round the figure. High keeps the inside, a rim\nalong it. The middle keeps both.");
+                if (!_live.DepthAvailable)
+                    ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), "No depth yet \u2014 this mask covers everything until there is.");
+                break;
+            case 15:
+                cfg.SetMaskCy(m, Knob("Saturation##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.75f, "Which saturation this selects. High for vivid colour, low for greys and\nwashed-out areas. Read from the shot before any grading.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Range##mk" + letter, cfg.MaskSize(m), 0.01f, 0.5f, 0.25f, "How far either side of that saturation still counts.", "%.3f"));
+                break;
+            case 16:
+                Centre("Offset", 0.5f, -1f, 2f);
+                cfg.SetMaskSize(m, Knob("Patch size##mk" + letter, cfg.MaskSize(m), 0.02f, 1f, 0.18f, "Roughly how big one patch is, in frame heights.", "%.3f"));
+                Detail("Coverage", 0.02f, 0.98f, 0.5f, "How much of the frame the patches cover.");
+                Squash("Stretch", "Stretches the patches: below 1 into streaks across, above 1 into columns.");
+                Rotation("Turns the stretch.");
+                break;
         }
 
-        cfg.SetMaskFeather(m, Knob("Feather##mk" + letter, cfg.MaskFeather(m), 0.001f, 0.5f, 0.08f, "How far the edge takes to fade out. A hard mask on a photograph reads as a\ncut-out, so this rarely wants to be near zero \u2014 unless it is a frame.", "%.3f"));
+        if (md == 14)
+            cfg.SetMaskFeather(m, Knob("Feather##mk" + letter, cfg.MaskFeather(m), 0.001f, 0.05f, 0.02f,
+                "How soft the band's outer edge is, up to half its width. Near zero is a crisp\nsticker outline; higher is a glow falling away from the figure.", "%.4f"));
+        else
+            cfg.SetMaskFeather(m, Knob("Feather##mk" + letter, cfg.MaskFeather(m), 0.001f, 0.5f, 0.08f, "How far the edge takes to fade out. A hard mask on a photograph reads as a\ncut-out, so this rarely wants to be near zero \u2014 unless it is a frame.", "%.3f"));
         bool inv = cfg.MaskInvert(m);
         if (ImGui.Checkbox("Invert##mk" + letter, ref inv)) { cfg.SetMaskInvert(m, inv); _dirty = true; }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(
             "Everything except the shape. Combined with other masks (the button after the\nletters on an effect), inverting reaches the regions a shape alone cannot.");
+
+        bool changed = cfg.MaskEdge(m) != 0 || cfg.MaskStrength(m) < 1f || cfg.MaskRough(m) > 0f
+                       || cfg.MaskMirror(m) != 0 || cfg.MaskDepthLimit(m) != 0;
+        if (ImGui.TreeNode((changed ? "Edge, strength, mirror (changed)" : "Edge, strength, mirror") + "###mopt" + letter))
+        {
+            if (md != 14)
+            {
+                Combo("Feather lies", "##mke" + letter, UiMaskEdge, Math.Clamp(cfg.MaskEdge(m), 0, 2), v => cfg.SetMaskEdge(m, v));
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+                    "Across the edge fades half outside the shape and half inside, as masks always did.\n" +
+                    "Inward keeps everything past the edge out: a panel that never leaks.\n" +
+                    "Outward keeps the whole inside at full strength and fades beyond it.");
+            }
+            cfg.SetMaskStrength(m, Knob("Strength##mks" + letter, cfg.MaskStrength(m), 0f, 1f, 1f,
+                "How much the mask lets through at its fullest. Half is an effect at half\nstrength inside the shape \u2014 without touching the effect itself."));
+            if (PluginConfig.MaskPlaceable(md))
+            {
+                cfg.SetMaskRough(m, Knob("Rough edge##mkro" + letter, cfg.MaskRough(m), 0f, 0.1f, 0f,
+                    "Tears the edge with noise, in frame heights: painted, burnt or torn paper\nrather than a clean cut. A little goes a long way.", "%.3f"));
+                if (cfg.MaskRough(m) > 0f)
+                    cfg.SetMaskRoughScale(m, Knob("Roughness scale##mkrs" + letter, cfg.MaskRoughScale(m), 1f, 40f, 8f,
+                        "How fine the tearing is: low is broad waves, high a ragged fringe."));
+                Combo("Mirror", "##mkmi" + letter, UiMaskMirror, Math.Clamp(cfg.MaskMirror(m), 0, 3), v => cfg.SetMaskMirror(m, v));
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+                    "Adds copies reflected across the middle of the frame. One mask then makes a\n" +
+                    "symmetrical layout \u2014 twin panels, matching beams \u2014 and moving it moves them all.");
+            }
+            Combo("Only on", "##mkdl" + letter, UiMaskDepthLimit, Math.Clamp(cfg.MaskDepthLimit(m), 0, 2), v => cfg.SetMaskDepthLimit(m, v));
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+                "Keeps the mask to the character or to what is behind them, by the depth split \u2014\n" +
+                "a shape that lights the figure but not the wall, without spending a second mask on it.");
+            ImGui.TreePop();
+        }
     }
 
     private void DrawFramesShared(PluginConfig cfg)

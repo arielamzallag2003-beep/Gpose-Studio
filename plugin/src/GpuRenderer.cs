@@ -251,6 +251,7 @@ public sealed class GpuRenderer : IDisposable
         public int FrameBreakOut; public int CutoutMasks; public int CutoutSubject; public int FrameFlags;
         public float FrameFillR; public float FrameFillG; public float FrameFillB; public float FrameFillA;
         public int RegionMask; public float RegionOpacity; public int RegionExclude; public float FramePad1;
+        public fixed float MaskX[96];
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -440,6 +441,7 @@ cbuffer P : register(b0) {
     int frameBreakOut; int cutoutMasks; int cutoutSubject; int frameFlags;
     float frameFillR; float frameFillG; float frameFillB; float frameFillA;
     int regionMask; float regionOpacity; int regionExclude; float framePad1;
+    float4 maskX[24];
 };
 Texture2D colorTex : register(t0);
 Texture2D depthTex : register(t1);
@@ -568,12 +570,57 @@ float3 MaskHsv(float3 c) {
     return float3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
 }
 
+float MaskHash(float2 p) { return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }
+float MaskVNoise(float2 p) {
+    float2 ip = floor(p), fp = frac(p);
+    float2 u = fp * fp * (3.0 - 2.0 * fp);
+    float a = MaskHash(ip), b = MaskHash(ip + float2(1.0, 0.0));
+    float c = MaskHash(ip + float2(0.0, 1.0)), e = MaskHash(ip + float2(1.0, 1.0));
+    return lerp(lerp(a, b, u.x), lerp(c, e, u.x), u.y);
+}
+float MaskFbm(float2 p) {
+    float v = 0.0, a = 0.5;
+    [unroll] for (int o = 0; o < 4; o++) { v += a * MaskVNoise(p); p = p * 2.03 + 1.7; a *= 0.5; }
+    return v / 0.9375;
+}
+
+float MaskBoxOut(float2 p, float2 h) {
+    float2 q = abs(p) - h;
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+}
+float MaskPolyOut(float2 p, float R, float n) {
+    float seg = 6.2831853 / n;
+    float a = atan2(p.y, p.x + 1e-7) - 1.5707963;
+    a -= seg * floor(a / seg + 0.5);
+    float l = length(p);
+    float2 q = float2(l * cos(a), l * abs(sin(a)));
+    float he = R * cos(seg * 0.5), hw = R * sin(seg * 0.5);
+    return (q.y > hw) ? length(q - float2(he, hw)) : q.x - he;
+}
+float MaskStarOut(float2 p, float R, float n, float k) {
+    float seg = 6.2831853 / n;
+    float a = atan2(p.x + 1e-7, -p.y);
+    a = abs(a - seg * floor(a / seg + 0.5));
+    float l = length(p);
+    float2 q = float2(l * sin(a), l * cos(a));
+    float2 A = float2(0.0, R);
+    float2 B = float2(R * k * sin(seg * 0.5), R * k * cos(seg * 0.5));
+    float2 ab = B - A, aq = q - A;
+    float t = saturate(dot(aq, ab) / max(dot(ab, ab), 1e-8));
+    float dist = length(aq - ab * t);
+    return (ab.x * aq.y - ab.y * aq.x < 0.0) ? -dist : dist;
+}
+
 float2 MaskSD(int mode, float2 uv, float lin, float asp, float3 src,
-              float cx, float cy, float size, float ell, float ang) {
+              float cx, float cy, float size, float ell, float ang,
+              float sides, float detail, float rnd) {
     float2 d = uv - float2(cx, cy);
     d.x *= asp;
     float ca = cos(ang), sa = sin(ang);
     float2 r = float2(d.x * ca + d.y * sa, -d.x * sa + d.y * ca);
+    float sz = max(size, 1e-4);
+    float n = (sides >= 3.0) ? floor(sides + 0.5) : 5.0;
+    float dt = (detail > 0.001) ? detail : 0.5;
 
     if (mode == 1) {
         float2 e = float2(r.x, r.y / max(ell, 0.05));
@@ -581,9 +628,9 @@ float2 MaskSD(int mode, float2 uv, float lin, float asp, float3 src,
     }
     if (mode == 2) return float2(-dot(d, float2(ca, sa)), 1.0);
     if (mode == 4) {
-        float2 q = abs(r) - float2(max(size, 1e-4), max(size * ell, 1e-4));
-        float outside = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
-        return float2(-outside, 1.0);
+        float2 h = float2(sz, max(size * ell, 1e-4));
+        float rc = saturate(rnd) * min(h.x, h.y);
+        return float2(-(MaskBoxOut(r, h - rc) - rc), 1.0);
     }
     if (mode == 5) {
         float rr = length(r);
@@ -598,29 +645,136 @@ float2 MaskSD(int mode, float2 uv, float lin, float asp, float3 src,
         return float2(max(size, 1e-4) - dh, gate);
     }
     if (mode == 8) return float2(bgRecolorStart - lin, 1.0);
+    if (mode == 9) {
+        float2 e = float2(r.x, r.y / max(ell, 0.05));
+        float cosn = cos(3.14159265 / n);
+        float rc = saturate(rnd) * sz * cosn;
+        return float2(-(MaskPolyOut(e, max(sz - rc / cosn, 1e-4), n) - rc), 1.0);
+    }
+    if (mode == 10) {
+        float2 e = float2(r.x, r.y / max(ell, 0.05));
+        float rc = saturate(rnd) * sz * 0.25;
+        return float2(-(MaskStarOut(e, max(sz - rc, 1e-4), n, clamp(dt, 0.05, 0.98)) - rc), 1.0);
+    }
+    if (mode == 11) {
+        float la = length(r);
+        float da = saturate(dt) * 3.14159265 - abs(atan2(r.y, r.x + 1e-7));
+        return float2(min(la * sin(clamp(da, -1.5707963, 1.5707963)), sz - la), 1.0);
+    }
+    if (mode == 12) {
+        float u = frac(r.x / sz + 0.5) - 0.5;
+        return float2((clamp(dt, 0.02, 0.98) * 0.5 - abs(u)) * sz, 1.0);
+    }
+    if (mode == 13) {
+        float ht = sz * clamp(dt, 0.02, 1.0) * 0.5;
+        float2 hb = float2(sz, ht), hv = float2(ht, max(size * ell, ht));
+        float rc = saturate(rnd) * ht;
+        return float2(-(min(MaskBoxOut(r, hb - rc), MaskBoxOut(r, hv - rc)) - rc), 1.0);
+    }
+    if (mode == 14) return float2(1.0, 1.0);
+    if (mode == 15) return float2(sz - abs(MaskHsv(saturate(src)).y - cy), 1.0);
+    if (mode == 16) {
+        float2 e = float2(r.x, r.y / max(ell, 0.05)) / sz;
+        return float2((MaskFbm(e + float2(17.3, 5.1)) - (1.0 - saturate(dt))) * sz, 1.0);
+    }
     return float2(max(size, 1e-4) - abs(lin - cy), 1.0);
 }
 
-float MaskShape(int mode, float2 uv, float lin, float asp, float3 src,
-                float cx, float cy, float size, float ell, float ang, float feath, int inv) {
-    if (mode == 0) return 1.0;
-    if ((mode == 3 || mode == 8) && hasDepth == 0) return 1.0;
-    float2 sg = MaskSD(mode, uv, lin, asp, src, cx, cy, size, ell, ang);
-    float m = smoothstep(-max(feath, 1e-4), max(feath, 1e-4), sg.x) * sg.y;
-    return (inv != 0) ? (1.0 - m) : m;
+bool MaskHasEdgeMode(int m) { return m == 1 || m == 2 || m == 4 || m == 5 || (m >= 9 && m <= 13); }
+bool MaskPlaceableMode(int m) { return MaskHasEdgeMode(m) || m == 16; }
+
+float2 MaskSDK(int k, float2 uv, float lin, float asp, float3 src, out float2 at) {
+    float4 m0 = maskP[k * 2], m1 = maskP[k * 2 + 1];
+    float4 x0 = maskX[k * 3], x1 = maskX[k * 3 + 1];
+    int mode = (int)(m0.x + 0.5);
+    at = uv;
+    float2 best = MaskSD(mode, uv, lin, asp, src, m0.y, m0.z, m0.w, m1.x, m1.y, x0.x, x0.y, x0.z);
+    int mir = MaskPlaceableMode(mode) ? (int)(x1.w + 0.5) : 0;
+    [loop] for (int cp = 1; cp < 4; cp++) {
+        if ((cp & mir) != cp) continue;
+        float2 u2 = float2(((cp & 1) != 0) ? 1.0 - uv.x : uv.x, ((cp & 2) != 0) ? 1.0 - uv.y : uv.y);
+        float2 s2 = MaskSD(mode, u2, lin, asp, src, m0.y, m0.z, m0.w, m1.x, m1.y, x0.x, x0.y, x0.z);
+        if (s2.x > best.x) { best = s2; at = u2; }
+    }
+    if (x0.w > 0.0 && MaskPlaceableMode(mode)) {
+        float sc = (x1.x > 0.01) ? x1.x : 8.0;
+        best.x += (MaskFbm(float2(uv.x * asp, uv.y) * sc + float2(k * 17.3, k * 5.7)) - 0.5) * x0.w;
+    }
+    return best;
 }
 
-float MaskEdgeSD(int mode, float2 uv, float lin, float asp, float3 src,
-                 float cx, float cy, float size, float ell, float ang) {
-    float s = MaskSD(mode, uv, lin, asp, src, cx, cy, size, ell, ang).x;
-    if (mode != 1) return s;
-    float2 d = uv - float2(cx, cy);
+float MaskSubjectEdge(float2 duv, float lin, float asp, float width, float side, float feather) {
+    float start = bgRecolorStart, soft = max(bgRecolorFeather, 0.003);
+    float r = max(width, 0.002);
+    float ia = 1.0 / max(asp, 1e-4);
+    float here = 1.0 - smoothstep(start, start + soft, lin);
+    bool inSubject = here > 0.5;
+    bool near = false;
+    [loop] for (int t = 0; t < 16; t++) {
+        float th = (float)t * 0.78539816;
+        float rr = (t < 8) ? r : r * 0.5;
+        float s = 1.0 - smoothstep(start, start + soft, LinearizeL(duv + float2(cos(th) * rr * ia, sin(th) * rr)));
+        if ((s > 0.5) != inSubject) { near = true; break; }
+    }
+    if (!near) return 0.0;
+    float f = clamp(feather, 0.0015, r * 0.5);
+    float reach = r + f;
+    float dNear = reach;
+    [loop] for (int a = 0; a < 16; a++) {
+        float th = (float)a * 0.39269908;
+        float2 dir = float2(cos(th) * ia, sin(th));
+        [loop] for (int st = 1; st <= 8; st++) {
+            float rr = reach * (float)st / 8.0;
+            if (rr >= dNear) break;
+            float s = 1.0 - smoothstep(start, start + soft, LinearizeL(duv + dir * rr));
+            if ((s > 0.5) != inSubject) { dNear = rr; break; }
+        }
+    }
+    float cov = 1.0 - smoothstep(r - f, r + f, dNear);
+    float w = saturate(side);
+    return cov * (inSubject ? here * saturate(2.0 * w) : (1.0 - here) * saturate(2.0 - 2.0 * w));
+}
+
+float MaskShapeK(int k, float2 uv, float2 duv, float lin, float asp, float3 src) {
+    float4 m0 = maskP[k * 2], m1 = maskP[k * 2 + 1];
+    float4 x0 = maskX[k * 3], x1 = maskX[k * 3 + 1], x2 = maskX[k * 3 + 2];
+    int mode = (int)(m0.x + 0.5);
+    if (mode == 0) return 1.0;
+    if ((mode == 3 || mode == 8 || mode == 14) && hasDepth == 0) return 1.0;
+    float m = 1.0;
+    if (mode == 14) {
+        m = MaskSubjectEdge(duv, lin, asp, m0.w, (x0.y > 0.001) ? x0.y : 0.5, m1.z);
+    } else {
+        float2 at;
+        float2 sg = MaskSDK(k, uv, lin, asp, src, at);
+        float f = max(m1.z, 1e-4);
+        int em = (int)(x2.x + 0.5);
+        float cov = (em == 1) ? smoothstep(0.0, 2.0 * f, sg.x)
+                  : ((em == 2) ? smoothstep(-2.0 * f, 0.0, sg.x) : smoothstep(-f, f, sg.x));
+        m = cov * sg.y;
+    }
+    if (m1.w > 0.5) m = 1.0 - m;
+    m *= 1.0 - saturate(x1.y);
+    int dl = (int)(x1.z + 0.5);
+    if (dl != 0 && hasDepth != 0) {
+        float subj = 1.0 - smoothstep(bgRecolorStart, bgRecolorStart + max(bgRecolorFeather, 0.003), lin);
+        m *= (dl == 1) ? subj : 1.0 - subj;
+    }
+    return m;
+}
+
+float MaskEdgeSDK(int k, float2 uv, float lin, float asp, float3 src) {
+    float2 at;
+    float s = MaskSDK(k, uv, lin, asp, src, at).x;
+    float4 m0 = maskP[k * 2], m1 = maskP[k * 2 + 1];
+    if ((int)(m0.x + 0.5) != 1) return s;
+    float2 d = at - float2(m0.y, m0.z);
     d.x *= asp;
-    float ca = cos(ang), sa = sin(ang);
+    float ca = cos(m1.y), sa = sin(m1.y);
     float2 r = float2(d.x * ca + d.y * sa, -d.x * sa + d.y * ca);
-    float k = 1.0 / max(ell, 0.05);
-    float2 e = float2(r.x, r.y * k);
-    float g = length(float2(e.x, e.y * k)) / max(length(e), 1e-5);
+    float kk = 1.0 / max(m1.x, 0.05);
+    float2 e = float2(r.x, r.y * kk);
+    float g = length(float2(e.x, e.y * kk)) / max(length(e), 1e-5);
     return s / max(g, 1e-3);
 }
 
@@ -2479,19 +2633,16 @@ float4 PS(VSOut i) : SV_Target {
     bool maskNeedsSrc = false;
     [loop] for (int mq = 0; mq < 8; mq++) {
         int mdq = MaskModeOf(mq);
-        if (mdq == 6 || mdq == 7) maskNeedsSrc = true;
+        if (mdq == 6 || mdq == 7 || mdq == 15) maskNeedsSrc = true;
     }
     if (maskNeedsSrc) {
         msrc = colorTex.SampleLevel(samp, cuv, 0).rgb;
         if (swapRB != 0) msrc = msrc.bgr;
     }
     [loop] for (int mk = 0; mk < 8; mk++) {
-        float4 m0 = maskP[mk * 2];
-        float4 m1 = maskP[mk * 2 + 1];
-        int mdk = (int)(m0.x + 0.5);
-        gMaskW[mk] = MaskShape(mdk, suv, lin, asp, msrc, m0.y, m0.z, m0.w, m1.x, m1.y, m1.z, (int)(m1.w + 0.5));
+        gMaskW[mk] = MaskShapeK(mk, suv, duv, lin, asp, msrc);
         if (maskF[mk * 2].x > 0.5)
-            gMaskSD[mk] = MaskEdgeSD(mdk, suv, lin, asp, msrc, m0.y, m0.z, m0.w, m1.x, m1.y);
+            gMaskSD[mk] = MaskEdgeSDK(mk, suv, lin, asp, msrc);
     }
 
     if (debugView == 5) {
@@ -3762,14 +3913,25 @@ float4 PS(VSOut i) : SV_Target {
             else if ((frameFlags & 2) != 0) lineUnder = subjMatte * frameKeep;
         }
         c = lerp(c, float3(frameFillR, frameFillG, frameFillB), (1.0 - frameVis) * saturate(frameFillA));
+        [loop] for (int fs = 0; fs < 8; fs++) {
+            float shAmt = maskF[fs * 2 + 1].w;
+            if (maskF[fs * 2].x > 0.5 && shAmt > 0.0 && MaskHasEdgeMode(MaskModeOf(fs))) {
+                float2 atS;
+                float sdS = MaskSDK(fs, suv - float2(0.010 / max(asp, 1e-4), 0.014), lin, asp, float3(0.0, 0.0, 0.0), atS).x;
+                c *= 1.0 - saturate(shAmt) * 0.75 * smoothstep(-0.018, 0.012, sdS) * (1.0 - frameVis);
+            }
+        }
 
         float aa = max(texelY, 1e-4) * 1.2;
         float behind = 1.0 - lineUnder;
         [loop] for (int fo = 0; fo < 8; fo++) {
             float4 f0 = maskF[fo * 2];
             int mdo = MaskModeOf(fo);
-            if (f0.x > 0.5 && f0.y > 0.0 && (mdo == 1 || mdo == 2 || mdo == 4 || mdo == 5)) {
-                float ln = 1.0 - smoothstep(f0.y * 0.5, f0.y * 0.5 + aa, abs(gMaskSD[fo]));
+            float glowO = saturate(maskF[fo * 2 + 1].z);
+            if (f0.x > 0.5 && (f0.y > 0.0 || glowO > 0.0) && MaskHasEdgeMode(mdo)) {
+                float ln = (f0.y > 0.0) ? 1.0 - smoothstep(f0.y * 0.5, f0.y * 0.5 + aa, abs(gMaskSD[fo])) : 0.0;
+                if (glowO > 0.0)
+                    ln = max(ln, glowO * exp(-max(abs(gMaskSD[fo]) - f0.y * 0.5, 0.0) / max(f0.y * 3.0, 0.006)));
                 if ((frameFlags & 1) != 0) {
                     float rankO = maskF[fo * 2 + 1].y;
                     [loop] for (int fu = 0; fu < 8; fu++) {

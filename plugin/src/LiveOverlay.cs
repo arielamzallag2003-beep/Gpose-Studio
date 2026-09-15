@@ -95,6 +95,14 @@ public sealed class LiveOverlay : IDisposable
         DrawMaskPlacement(Plugin.Config);
         DrawTextPlacement(Plugin.Config);
 
+        {
+            var vp = ImGui.GetMainViewport();
+            float asp = (_capture is { Width: > 0, Height: > 0 })
+                ? (float)_capture.Width / _capture.Height
+                : (vp.Size.Y > 0f ? vp.Size.X / vp.Size.Y : 1f);
+            Plugin.Config.SyncElemFollowers(asp);
+        }
+
         bool active = _gate.IsActive && !_gpuFailed;
         bool showLive = Enabled;
         bool want = active && (showLive || _exportPending);
@@ -508,6 +516,14 @@ public sealed class LiveOverlay : IDisposable
                 p.MaskF[o + 1] = cfg.MaskOutline(mi);
                 p.MaskF[o + 2] = outR; p.MaskF[o + 3] = outG; p.MaskF[o + 4] = outB;
                 p.MaskF[o + 5] = cfg.MaskFrameRank(mi);
+                p.MaskF[o + 6] = Math.Clamp(cfg.MaskOutGlow(mi), 0f, 1f);
+                p.MaskF[o + 7] = Math.Clamp(cfg.MaskShadow(mi), 0f, 1f);
+                int x = mi * 12;
+                p.MaskX[x] = cfg.MaskSides(mi); p.MaskX[x + 1] = cfg.MaskDetail(mi);
+                p.MaskX[x + 2] = cfg.MaskRound(mi); p.MaskX[x + 3] = Math.Max(cfg.MaskRough(mi), 0f);
+                p.MaskX[x + 4] = cfg.MaskRoughScale(mi); p.MaskX[x + 5] = 1f - Math.Clamp(cfg.MaskStrength(mi), 0f, 1f);
+                p.MaskX[x + 6] = cfg.MaskDepthLimit(mi); p.MaskX[x + 7] = cfg.MaskMirror(mi);
+                p.MaskX[x + 8] = cfg.MaskEdge(mi);
             }
         }
         if (cfg.EnElements)
@@ -599,6 +615,7 @@ public sealed class LiveOverlay : IDisposable
     private readonly List<PluginConfig.MaskPose> _groupStart = new();
     private Vector2 _groupCentre;
     private const float GroupHandleReach = 0.16f;
+    private const float WedgeHandleReach = 0.45f;
 
     private void DrawGroupPlacement(PluginConfig cfg, int[] group)
     {
@@ -670,7 +687,8 @@ public sealed class LiveOverlay : IDisposable
             uint dark = ImGui.GetColorU32(new Vector4(0f, 0f, 0f, 0.75f));
             foreach (var i in group)
                 DrawMaskOutline(dl, cfg.MaskMode(i), ToPx(new Vector2(cfg.MaskCx(i), cfg.MaskCy(i))),
-                                cfg.MaskSize(i), cfg.MaskEllipse(i), cfg.MaskAngle(i), kx, ky, W + H, line, dark);
+                                cfg.MaskSize(i), cfg.MaskEllipse(i), cfg.MaskAngle(i),
+                                cfg.MaskSides(i), cfg.MaskDetail(i), cfg.MaskRound(i), kx, ky, W + H, line, dark);
             dl.AddLine(centre, handle, dark, 3.5f);
             dl.AddLine(centre, handle, line, 1.5f);
             foreach (var h in new[] { centre, handle })
@@ -693,6 +711,7 @@ public sealed class LiveOverlay : IDisposable
     }
 
     private static void DrawMaskOutline(ImDrawListPtr dl, int mode, Vector2 centre, float size, float ell, float ang,
+                                        float sides, float detail, float round,
                                         float kx, float ky, float reach, uint line, uint dark)
     {
         float ca = MathF.Cos(ang), sa = MathF.Sin(ang);
@@ -717,14 +736,25 @@ public sealed class LiveOverlay : IDisposable
         switch (mode)
         {
             case 1: Oval(size, ell); break;
+            case 16: Oval(size, ell); break;
             case 5: Oval(size, 1f); Oval(size * Math.Clamp(ell, 0f, 0.95f), 1f); break;
+            case 9 or 10 or 13 or 11:
+            {
+                var ct = mode == 11 ? MaskGeometry.Wedge(Math.Min(size, 3f), detail)
+                                    : MaskGeometry.Contour(mode, 0f, size, ell, sides, detail, round, 120);
+                if (ct.Count < 2) break;
+                var pts = new Vector2[ct.Count];
+                for (int k = 0; k < ct.Count; k++) pts[k] = ToScreen(ct[k].X, ct[k].Y);
+                Poly(pts);
+                break;
+            }
             case 4:
             {
                 float hx = size, hy = size * ell;
                 Poly(new[] { ToScreen(-hx, -hy), ToScreen(hx, -hy), ToScreen(hx, hy), ToScreen(-hx, hy), ToScreen(-hx, -hy) });
                 break;
             }
-            case 2:
+            case 2 or 12:
             {
                 Vector2 perp = new(-sa * kx, ca * ky);
                 perp = perp.Length() > 1e-4f ? perp / perp.Length() : new Vector2(0f, 1f);
@@ -750,6 +780,8 @@ public sealed class LiveOverlay : IDisposable
 
         float cx = cfg.MaskCx(mi), cy = cfg.MaskCy(mi), size = cfg.MaskSize(mi);
         float ell = cfg.MaskEllipse(mi), ang = cfg.MaskAngle(mi), feath = cfg.MaskFeather(mi);
+        float sides = cfg.MaskSides(mi), detail = cfg.MaskDetail(mi), round = cfg.MaskRound(mi);
+        int mirror = cfg.MaskMirror(mi);
 
         var vp = ImGui.GetMainViewport();
         float W = vp.Size.X, H = vp.Size.Y;
@@ -763,8 +795,9 @@ public sealed class LiveOverlay : IDisposable
 
         Vector2 Handle2() => mode switch
         {
-            1 or 4 => centre + new Vector2(-dir.Y * kx, dir.X * ky) * (size * ell),
-            5      => centre + new Vector2(-dir.Y * kx, dir.X * ky) * size,
+            1 or 4 or 9 or 10 or 13 => centre + new Vector2(-dir.Y * kx, dir.X * ky) * (size * ell),
+            5 or 16 => centre + new Vector2(-dir.Y * kx, dir.X * ky) * size,
+            11     => centre + new Vector2(dir.X * kx, dir.Y * ky) * Math.Min(size, WedgeHandleReach),
             _      => centre - new Vector2(dir.X * kx, dir.Y * ky) * 0.14f,
         };
 
@@ -800,15 +833,21 @@ public sealed class LiveOverlay : IDisposable
                 else
                 {
                     Vector2 r = new((t.X - centre.X) / Math.Max(kx, 1f), (t.Y - centre.Y) / Math.Max(ky, 1f));
-                    if (mode == 1 || mode == 4)
+                    if (mode is 1 or 4 or 9 or 10 or 13)
                     {
                         size = Math.Clamp(r.Length() / Math.Max(ell, 0.05f), 0.01f, 1.5f);
                         ang = (float)Math.Atan2(-r.X, r.Y);
                     }
-                    else if (mode == 5)
+                    else if (mode is 5 or 16)
                     {
                         size = Math.Clamp(r.Length(), 0.01f, 1.5f);
                         ang = (float)Math.Atan2(-r.X, r.Y);
+                    }
+                    else if (mode == 11)
+                    {
+                        ang = (float)Math.Atan2(r.Y, r.X);
+                        float len = r.Length();
+                        if (size <= WedgeHandleReach || len < WedgeHandleReach * 0.95f) size = Math.Clamp(len, 0.01f, 3f);
                     }
                     else ang = (float)Math.Atan2(-r.Y, -r.X);
                 }
@@ -831,10 +870,23 @@ public sealed class LiveOverlay : IDisposable
             float ca = (float)Math.Cos(ang), sa = (float)Math.Sin(ang);
             Vector2 ToScreen(float lx, float ly) => centre + new Vector2((lx * ca - ly * sa) * kx, (lx * sa + ly * ca) * ky);
 
+            Vector2 mid = vp.Pos + vp.Size * 0.5f;
             void Poly(Vector2[] pts, uint col, float thick, bool halo)
             {
                 if (halo) for (int k = 0; k + 1 < pts.Length; k++) dl.AddLine(pts[k], pts[k + 1], dark, thick + 1.7f);
                 for (int k = 0; k + 1 < pts.Length; k++) dl.AddLine(pts[k], pts[k + 1], col, thick);
+                if (mirror == 0) return;
+                for (int cp = 1; cp < 4; cp++)
+                {
+                    if ((cp & mirror) != cp) continue;
+                    for (int k = 0; k + 1 < pts.Length; k++)
+                    {
+                        Vector2 a = pts[k], b = pts[k + 1];
+                        if ((cp & 1) != 0) { a.X = 2f * mid.X - a.X; b.X = 2f * mid.X - b.X; }
+                        if ((cp & 2) != 0) { a.Y = 2f * mid.Y - a.Y; b.Y = 2f * mid.Y - b.Y; }
+                        dl.AddLine(a, b, faint, 1.2f);
+                    }
+                }
             }
             void Oval(float rad, float squash, uint col, float thick, bool halo)
             {
@@ -874,6 +926,41 @@ public sealed class LiveOverlay : IDisposable
                 if (inner > 1e-4f) Oval(inner, 1f, line, 1.8f, true);
                 Oval(size + f, 1f, faint, 1.2f, false);
                 if (inner > f) Oval(inner - f, 1f, faint, 1.2f, false);
+            }
+            else if (mode is 9 or 10 or 13)
+            {
+                void Level(float lv, uint col, float thick, bool halo)
+                {
+                    var ct = MaskGeometry.Contour(mode, lv, size, ell, sides, detail, round);
+                    if (ct.Count < 2) return;
+                    var pts = new Vector2[ct.Count];
+                    for (int k = 0; k < ct.Count; k++) pts[k] = ToScreen(ct[k].X, ct[k].Y);
+                    Poly(pts, col, thick, halo);
+                }
+                Level(-f, faint, 1.2f, false);
+                Level(f, faint, 1.2f, false);
+                Level(0f, line, 1.8f, true);
+            }
+            else if (mode == 11)
+            {
+                var ct = MaskGeometry.Wedge(Math.Min(size, 3f), detail);
+                var pts = new Vector2[ct.Count];
+                for (int k = 0; k < ct.Count; k++) pts[k] = ToScreen(ct[k].X, ct[k].Y);
+                Poly(pts, line, 1.8f, true);
+            }
+            else if (mode == 16)
+            {
+                Oval(size, ell, line, 1.8f, true);
+            }
+            else if (mode == 12)
+            {
+                float period = Math.Max(size, 0.01f);
+                float halfBand = Math.Clamp(MaskGeometry.Detail(detail), 0.02f, 0.98f) * 0.5f * period;
+                float span = (W + H) / Math.Max(Math.Min(kx, ky), 1f);
+                int count = Math.Min((int)(span / period) + 1, 60);
+                for (int k = -count; k <= count; k++)
+                    foreach (float e in new[] { k * period - halfBand, k * period + halfBand })
+                        Poly(new[] { ToScreen(e, -span), ToScreen(e, span) }, k == 0 ? line : faint, k == 0 ? 1.8f : 1.2f, k == 0);
             }
             else
             {

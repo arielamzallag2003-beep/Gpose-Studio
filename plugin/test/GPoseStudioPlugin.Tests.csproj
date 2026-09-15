@@ -27,6 +27,8 @@
     <Compile Include="..\src\PluginConfig.cs" />
     <Compile Include="..\src\LookStore.cs" />
     <Compile Include="..\src\MaskRegions.cs" />
+    <Compile Include="..\src\MaskGeometry.cs" />
+    <Compile Include="..\src\MaskTemplates.cs" />
     <Compile Include="TestServices.cs" />
     <Compile Include="PngTests.cs" />
     <Compile Include="PngEmbedTests.cs" />
@@ -47,5 +49,10 @@
     <Compile Include="EightMaskTests.cs" />
     <Compile Include="LinkedMaskTests.cs" />
     <Compile Include="FrameOrderTests.cs" />
+    <Compile Include="ElemFollowTests.cs" />
+    <Compile Include="MaskGeometryTests.cs" />
+    <Compile Include="MaskOptionTests.cs" />
+    <Compile Include="MaskPreviewTool.cs" />
+    <Compile Include="MaskTemplateTests.cs" />
   </ItemGroup>
 </Project>

@@ -49,6 +49,8 @@ public class MaskShapeTests
     [Theory]
     [InlineData(0, false)] [InlineData(1, true)] [InlineData(2, true)] [InlineData(3, false)]
     [InlineData(4, true)] [InlineData(5, true)] [InlineData(6, false)] [InlineData(7, false)] [InlineData(8, false)]
+    [InlineData(9, true)] [InlineData(10, true)] [InlineData(11, true)] [InlineData(12, true)] [InlineData(13, true)]
+    [InlineData(14, false)] [InlineData(15, false)] [InlineData(16, true)]
     public void OnlyShapesWithAPositionCanBeDragged(int mode, bool placeable)
         => Assert.Equal(placeable, PluginConfig.MaskPlaceable(mode));
 

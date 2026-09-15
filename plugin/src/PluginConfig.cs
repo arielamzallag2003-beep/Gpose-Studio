@@ -1032,6 +1032,95 @@ public sealed class PluginConfig : IPluginConfiguration
     public int MaskFFrameRank { get; set; } = 5;
     public int MaskGFrameRank { get; set; } = 6;
     public int MaskHFrameRank { get; set; } = 7;
+
+    public float MaskASides { get; set; } = 5f;
+    public float MaskBSides { get; set; } = 5f;
+    public float MaskCSides { get; set; } = 5f;
+    public float MaskDSides { get; set; } = 5f;
+    public float MaskESides { get; set; } = 5f;
+    public float MaskFSides { get; set; } = 5f;
+    public float MaskGSides { get; set; } = 5f;
+    public float MaskHSides { get; set; } = 5f;
+    public float MaskADetail { get; set; } = 0.5f;
+    public float MaskBDetail { get; set; } = 0.5f;
+    public float MaskCDetail { get; set; } = 0.5f;
+    public float MaskDDetail { get; set; } = 0.5f;
+    public float MaskEDetail { get; set; } = 0.5f;
+    public float MaskFDetail { get; set; } = 0.5f;
+    public float MaskGDetail { get; set; } = 0.5f;
+    public float MaskHDetail { get; set; } = 0.5f;
+    public float MaskARound { get; set; } = 0f;
+    public float MaskBRound { get; set; } = 0f;
+    public float MaskCRound { get; set; } = 0f;
+    public float MaskDRound { get; set; } = 0f;
+    public float MaskERound { get; set; } = 0f;
+    public float MaskFRound { get; set; } = 0f;
+    public float MaskGRound { get; set; } = 0f;
+    public float MaskHRound { get; set; } = 0f;
+    public float MaskARough { get; set; } = 0f;
+    public float MaskBRough { get; set; } = 0f;
+    public float MaskCRough { get; set; } = 0f;
+    public float MaskDRough { get; set; } = 0f;
+    public float MaskERough { get; set; } = 0f;
+    public float MaskFRough { get; set; } = 0f;
+    public float MaskGRough { get; set; } = 0f;
+    public float MaskHRough { get; set; } = 0f;
+    public float MaskARoughScale { get; set; } = 8f;
+    public float MaskBRoughScale { get; set; } = 8f;
+    public float MaskCRoughScale { get; set; } = 8f;
+    public float MaskDRoughScale { get; set; } = 8f;
+    public float MaskERoughScale { get; set; } = 8f;
+    public float MaskFRoughScale { get; set; } = 8f;
+    public float MaskGRoughScale { get; set; } = 8f;
+    public float MaskHRoughScale { get; set; } = 8f;
+    public float MaskAStrength { get; set; } = 1f;
+    public float MaskBStrength { get; set; } = 1f;
+    public float MaskCStrength { get; set; } = 1f;
+    public float MaskDStrength { get; set; } = 1f;
+    public float MaskEStrength { get; set; } = 1f;
+    public float MaskFStrength { get; set; } = 1f;
+    public float MaskGStrength { get; set; } = 1f;
+    public float MaskHStrength { get; set; } = 1f;
+    public int MaskADepthLimit { get; set; } = 0;
+    public int MaskBDepthLimit { get; set; } = 0;
+    public int MaskCDepthLimit { get; set; } = 0;
+    public int MaskDDepthLimit { get; set; } = 0;
+    public int MaskEDepthLimit { get; set; } = 0;
+    public int MaskFDepthLimit { get; set; } = 0;
+    public int MaskGDepthLimit { get; set; } = 0;
+    public int MaskHDepthLimit { get; set; } = 0;
+    public int MaskAMirror { get; set; } = 0;
+    public int MaskBMirror { get; set; } = 0;
+    public int MaskCMirror { get; set; } = 0;
+    public int MaskDMirror { get; set; } = 0;
+    public int MaskEMirror { get; set; } = 0;
+    public int MaskFMirror { get; set; } = 0;
+    public int MaskGMirror { get; set; } = 0;
+    public int MaskHMirror { get; set; } = 0;
+    public int MaskAEdge { get; set; } = 0;
+    public int MaskBEdge { get; set; } = 0;
+    public int MaskCEdge { get; set; } = 0;
+    public int MaskDEdge { get; set; } = 0;
+    public int MaskEEdge { get; set; } = 0;
+    public int MaskFEdge { get; set; } = 0;
+    public int MaskGEdge { get; set; } = 0;
+    public int MaskHEdge { get; set; } = 0;
+    public float MaskAOutGlow { get; set; } = 0f;
+    public float MaskBOutGlow { get; set; } = 0f;
+    public float MaskCOutGlow { get; set; } = 0f;
+    public float MaskDOutGlow { get; set; } = 0f;
+    public float MaskEOutGlow { get; set; } = 0f;
+    public float MaskFOutGlow { get; set; } = 0f;
+    public float MaskGOutGlow { get; set; } = 0f;
+    public float MaskHOutGlow { get; set; } = 0f;
+    public float MaskAShadow { get; set; } = 0f;
+    public float MaskBShadow { get; set; } = 0f;
+    public float MaskCShadow { get; set; } = 0f;
+    public float MaskDShadow { get; set; } = 0f;
+    public float MaskEShadow { get; set; } = 0f;
+    public float MaskFShadow { get; set; } = 0f;
+    public float MaskGShadow { get; set; } = 0f;
+    public float MaskHShadow { get; set; } = 0f;
     public bool MaskFramesStacked { get; set; } = false;
     public bool MaskOutlineBehind { get; set; } = false;
 
@@ -1195,6 +1284,29 @@ public sealed class PluginConfig : IPluginConfiguration
     public int MaskFrameRank(int i) => i switch { 0 => MaskAFrameRank, 1 => MaskBFrameRank, 2 => MaskCFrameRank, 3 => MaskDFrameRank, 4 => MaskEFrameRank, 5 => MaskFFrameRank, 6 => MaskGFrameRank, _ => MaskHFrameRank };
     public void SetMaskFrameRank(int i, int v) { switch (i) { case 0: MaskAFrameRank = v; break; case 1: MaskBFrameRank = v; break; case 2: MaskCFrameRank = v; break; case 3: MaskDFrameRank = v; break; case 4: MaskEFrameRank = v; break; case 5: MaskFFrameRank = v; break; case 6: MaskGFrameRank = v; break; default: MaskHFrameRank = v; break; } }
 
+    public float MaskSides(int i) => (i switch { 0 => MaskASides, 1 => MaskBSides, 2 => MaskCSides, 3 => MaskDSides, 4 => MaskESides, 5 => MaskFSides, 6 => MaskGSides, _ => MaskHSides });
+    public void SetMaskSides(int i, float v) { switch (i) { case 0: MaskASides = v; break; case 1: MaskBSides = v; break; case 2: MaskCSides = v; break; case 3: MaskDSides = v; break; case 4: MaskESides = v; break; case 5: MaskFSides = v; break; case 6: MaskGSides = v; break; default: MaskHSides = v; break; } }
+    public float MaskDetail(int i) => (i switch { 0 => MaskADetail, 1 => MaskBDetail, 2 => MaskCDetail, 3 => MaskDDetail, 4 => MaskEDetail, 5 => MaskFDetail, 6 => MaskGDetail, _ => MaskHDetail });
+    public void SetMaskDetail(int i, float v) { switch (i) { case 0: MaskADetail = v; break; case 1: MaskBDetail = v; break; case 2: MaskCDetail = v; break; case 3: MaskDDetail = v; break; case 4: MaskEDetail = v; break; case 5: MaskFDetail = v; break; case 6: MaskGDetail = v; break; default: MaskHDetail = v; break; } }
+    public float MaskRound(int i) => (i switch { 0 => MaskARound, 1 => MaskBRound, 2 => MaskCRound, 3 => MaskDRound, 4 => MaskERound, 5 => MaskFRound, 6 => MaskGRound, _ => MaskHRound });
+    public void SetMaskRound(int i, float v) { switch (i) { case 0: MaskARound = v; break; case 1: MaskBRound = v; break; case 2: MaskCRound = v; break; case 3: MaskDRound = v; break; case 4: MaskERound = v; break; case 5: MaskFRound = v; break; case 6: MaskGRound = v; break; default: MaskHRound = v; break; } }
+    public float MaskRough(int i) => (i switch { 0 => MaskARough, 1 => MaskBRough, 2 => MaskCRough, 3 => MaskDRough, 4 => MaskERough, 5 => MaskFRough, 6 => MaskGRough, _ => MaskHRough });
+    public void SetMaskRough(int i, float v) { switch (i) { case 0: MaskARough = v; break; case 1: MaskBRough = v; break; case 2: MaskCRough = v; break; case 3: MaskDRough = v; break; case 4: MaskERough = v; break; case 5: MaskFRough = v; break; case 6: MaskGRough = v; break; default: MaskHRough = v; break; } }
+    public float MaskRoughScale(int i) => (i switch { 0 => MaskARoughScale, 1 => MaskBRoughScale, 2 => MaskCRoughScale, 3 => MaskDRoughScale, 4 => MaskERoughScale, 5 => MaskFRoughScale, 6 => MaskGRoughScale, _ => MaskHRoughScale });
+    public void SetMaskRoughScale(int i, float v) { switch (i) { case 0: MaskARoughScale = v; break; case 1: MaskBRoughScale = v; break; case 2: MaskCRoughScale = v; break; case 3: MaskDRoughScale = v; break; case 4: MaskERoughScale = v; break; case 5: MaskFRoughScale = v; break; case 6: MaskGRoughScale = v; break; default: MaskHRoughScale = v; break; } }
+    public float MaskStrength(int i) => (i switch { 0 => MaskAStrength, 1 => MaskBStrength, 2 => MaskCStrength, 3 => MaskDStrength, 4 => MaskEStrength, 5 => MaskFStrength, 6 => MaskGStrength, _ => MaskHStrength });
+    public void SetMaskStrength(int i, float v) { switch (i) { case 0: MaskAStrength = v; break; case 1: MaskBStrength = v; break; case 2: MaskCStrength = v; break; case 3: MaskDStrength = v; break; case 4: MaskEStrength = v; break; case 5: MaskFStrength = v; break; case 6: MaskGStrength = v; break; default: MaskHStrength = v; break; } }
+    public int MaskDepthLimit(int i) => (i switch { 0 => MaskADepthLimit, 1 => MaskBDepthLimit, 2 => MaskCDepthLimit, 3 => MaskDDepthLimit, 4 => MaskEDepthLimit, 5 => MaskFDepthLimit, 6 => MaskGDepthLimit, _ => MaskHDepthLimit });
+    public void SetMaskDepthLimit(int i, int v) { switch (i) { case 0: MaskADepthLimit = v; break; case 1: MaskBDepthLimit = v; break; case 2: MaskCDepthLimit = v; break; case 3: MaskDDepthLimit = v; break; case 4: MaskEDepthLimit = v; break; case 5: MaskFDepthLimit = v; break; case 6: MaskGDepthLimit = v; break; default: MaskHDepthLimit = v; break; } }
+    public int MaskMirror(int i) => (i switch { 0 => MaskAMirror, 1 => MaskBMirror, 2 => MaskCMirror, 3 => MaskDMirror, 4 => MaskEMirror, 5 => MaskFMirror, 6 => MaskGMirror, _ => MaskHMirror });
+    public void SetMaskMirror(int i, int v) { switch (i) { case 0: MaskAMirror = v; break; case 1: MaskBMirror = v; break; case 2: MaskCMirror = v; break; case 3: MaskDMirror = v; break; case 4: MaskEMirror = v; break; case 5: MaskFMirror = v; break; case 6: MaskGMirror = v; break; default: MaskHMirror = v; break; } }
+    public int MaskEdge(int i) => (i switch { 0 => MaskAEdge, 1 => MaskBEdge, 2 => MaskCEdge, 3 => MaskDEdge, 4 => MaskEEdge, 5 => MaskFEdge, 6 => MaskGEdge, _ => MaskHEdge });
+    public void SetMaskEdge(int i, int v) { switch (i) { case 0: MaskAEdge = v; break; case 1: MaskBEdge = v; break; case 2: MaskCEdge = v; break; case 3: MaskDEdge = v; break; case 4: MaskEEdge = v; break; case 5: MaskFEdge = v; break; case 6: MaskGEdge = v; break; default: MaskHEdge = v; break; } }
+    public float MaskOutGlow(int i) => (i switch { 0 => MaskAOutGlow, 1 => MaskBOutGlow, 2 => MaskCOutGlow, 3 => MaskDOutGlow, 4 => MaskEOutGlow, 5 => MaskFOutGlow, 6 => MaskGOutGlow, _ => MaskHOutGlow });
+    public void SetMaskOutGlow(int i, float v) { switch (i) { case 0: MaskAOutGlow = v; break; case 1: MaskBOutGlow = v; break; case 2: MaskCOutGlow = v; break; case 3: MaskDOutGlow = v; break; case 4: MaskEOutGlow = v; break; case 5: MaskFOutGlow = v; break; case 6: MaskGOutGlow = v; break; default: MaskHOutGlow = v; break; } }
+    public float MaskShadow(int i) => (i switch { 0 => MaskAShadow, 1 => MaskBShadow, 2 => MaskCShadow, 3 => MaskDShadow, 4 => MaskEShadow, 5 => MaskFShadow, 6 => MaskGShadow, _ => MaskHShadow });
+    public void SetMaskShadow(int i, float v) { switch (i) { case 0: MaskAShadow = v; break; case 1: MaskBShadow = v; break; case 2: MaskCShadow = v; break; case 3: MaskDShadow = v; break; case 4: MaskEShadow = v; break; case 5: MaskFShadow = v; break; case 6: MaskGShadow = v; break; default: MaskHShadow = v; break; } }
+
     public int[] MaskFrameStack()
     {
         var frames = new List<int>(MaskCount);
@@ -1269,11 +1381,27 @@ public sealed class PluginConfig : IPluginConfiguration
             if (p.Name[4] == letter) p.SetValue(this, p.GetValue(def));
         int bit = ZoneBits.MaskBit(i);
         foreach (var p in ZoneProps) p.SetValue(this, ((int?)p.GetValue(this) ?? 0) & ~bit);
-        for (int slot = 0; slot < 8; slot++) SetElemMasks(slot, ElemMasks(slot) & ~bit);
+        for (int slot = 0; slot < 8; slot++)
+        {
+            SetElemMasks(slot, ElemMasks(slot) & ~bit);
+            if (ElemFollowMask(slot) == i) SetElemFollowMask(slot, -1);
+        }
         ExportCutoutMasks &= ~bit;
         ExportExcludeMasks &= ~bit;
         if (PlacingMask == i + 1) PlacingMask = 0;
         if (MaskShowWhich == i + 1) DebugShowMask = false;
+    }
+
+    public void ResetMaskSettingsMissingFrom(Func<string, bool> has)
+    {
+        PluginConfig? def = null;
+        for (int i = 0; i < MaskCount; i++)
+        {
+            char letter = MaskLetter(i);
+            if (!has("Mask" + letter + "Mode")) continue;
+            foreach (var p in MaskSlotProps)
+                if (p.Name[4] == letter && !has(p.Name)) p.SetValue(this, p.GetValue(def ??= new PluginConfig()));
+        }
     }
 
     public List<string> MaskUsers(int i)
@@ -1283,7 +1411,11 @@ public sealed class PluginConfig : IPluginConfiguration
         foreach (var p in ZoneProps)
             if ((((int?)p.GetValue(this) ?? 0) & bit) != 0) users.Add(p.Name);
         for (int slot = 0; slot < 8; slot++)
-            if (Elem != null && Elem[slot * ElemStride] > 0.5f && (ElemMasks(slot) & bit) != 0) users.Add("Elem" + slot);
+        {
+            if (Elem == null || Elem[slot * ElemStride] < 0.5f) continue;
+            if ((ElemMasks(slot) & bit) != 0) users.Add("Elem" + slot);
+            if (ElemFollowMask(slot) == i) users.Add("ElemFollow" + slot);
+        }
         if ((ExportCutoutMasks & bit) != 0) users.Add(nameof(ExportCutoutMasks));
         if ((ExportExcludeMasks & bit) != 0) users.Add(nameof(ExportExcludeMasks));
         return users;
@@ -1294,6 +1426,11 @@ public sealed class PluginConfig : IPluginConfiguration
         int bit = ZoneBits.MaskBit(i);
         if (name == nameof(ExportCutoutMasks)) { ExportCutoutMasks &= ~bit; return; }
         if (name == nameof(ExportExcludeMasks)) { ExportExcludeMasks &= ~bit; return; }
+        if (name.StartsWith("ElemFollow", System.StringComparison.Ordinal) && int.TryParse(name.AsSpan(10), out int fslot) && fslot is >= 0 and < 8)
+        {
+            if (ElemFollowMask(fslot) == i) SetElemFollowMask(fslot, -1);
+            return;
+        }
         if (name.StartsWith("Elem", System.StringComparison.Ordinal) && int.TryParse(name.AsSpan(4), out int slot) && slot is >= 0 and < 8)
         {
             SetElemMasks(slot, ElemMasks(slot) & ~bit);
@@ -1315,28 +1452,44 @@ public sealed class PluginConfig : IPluginConfiguration
         return ZoneBits.WithMaskMode(frames != 0 ? frames : shapes, ZoneBits.MaskEither);
     }
 
-    public static bool MaskPlaceable(int mode) => mode is 1 or 2 or 4 or 5;
-    public static bool MaskHasEdge(int mode) => mode is 1 or 2 or 4 or 5;
+    public static bool MaskPlaceable(int mode) => MaskHasEdge(mode) || mode == 16;
+    public static bool MaskHasEdge(int mode) => mode is 1 or 2 or 4 or 5 or (>= 9 and <= 13);
+    public static bool MaskNeedsDepth(int mode) => mode is 3 or 8 or 14;
 
-    public enum MaskPreset { Face, Diamond, LeftHalf, TopHalf, Subject, Highlights, Shadows, SkinTones }
+    public enum MaskPreset
+    {
+        Face, Diamond, LeftHalf, TopHalf, Subject, Highlights, Shadows, SkinTones,
+        Hexagon, Star, LightCone, Stripes, Cross, SubjectEdge, Vivid, Patches,
+    }
 
     public void ApplyMaskPreset(int i, MaskPreset p)
     {
         const float Quarter = (float)(Math.PI / 4.0), HalfPi = (float)(Math.PI / 2.0);
-        (int mode, float cx, float cy, float size, float ell, float ang, float feath) v = p switch
+        (int mode, float cx, float cy, float size, float ell, float ang, float feath, float sides, float detail) v = p switch
         {
-            MaskPreset.Face       => (1, 0.50f, 0.34f, 0.17f, 1.30f, 0f, 0.10f),
-            MaskPreset.Diamond    => (4, 0.50f, 0.50f, 0.26f, 1.00f, Quarter, 0.004f),
-            MaskPreset.LeftHalf   => (2, 0.50f, 0.50f, 0.25f, 1.00f, 0f, 0.12f),
-            MaskPreset.TopHalf    => (2, 0.50f, 0.50f, 0.25f, 1.00f, HalfPi, 0.12f),
-            MaskPreset.Subject    => (8, 0.50f, 0.50f, 0.25f, 1.00f, 0f, 0.02f),
-            MaskPreset.Highlights => (6, 0.50f, 0.80f, 0.20f, 1.00f, 0f, 0.08f),
-            MaskPreset.Shadows    => (6, 0.50f, 0.12f, 0.14f, 1.00f, 0f, 0.08f),
-            MaskPreset.SkinTones  => (7, 0.055f, 0.50f, 0.06f, 0.15f, 0f, 0.03f),
-            _                     => (0, 0.50f, 0.50f, 0.25f, 1.00f, 0f, 0.08f),
+            MaskPreset.Face       => (1, 0.50f, 0.34f, 0.17f, 1.30f, 0f, 0.10f, 5f, 0.5f),
+            MaskPreset.Diamond    => (4, 0.50f, 0.50f, 0.26f, 1.00f, Quarter, 0.004f, 5f, 0.5f),
+            MaskPreset.LeftHalf   => (2, 0.50f, 0.50f, 0.25f, 1.00f, 0f, 0.12f, 5f, 0.5f),
+            MaskPreset.TopHalf    => (2, 0.50f, 0.50f, 0.25f, 1.00f, HalfPi, 0.12f, 5f, 0.5f),
+            MaskPreset.Subject    => (8, 0.50f, 0.50f, 0.25f, 1.00f, 0f, 0.02f, 5f, 0.5f),
+            MaskPreset.Highlights => (6, 0.50f, 0.80f, 0.20f, 1.00f, 0f, 0.08f, 5f, 0.5f),
+            MaskPreset.Shadows    => (6, 0.50f, 0.12f, 0.14f, 1.00f, 0f, 0.08f, 5f, 0.5f),
+            MaskPreset.SkinTones  => (7, 0.055f, 0.50f, 0.06f, 0.15f, 0f, 0.03f, 5f, 0.5f),
+            MaskPreset.Hexagon    => (9, 0.50f, 0.50f, 0.24f, 1.00f, 0f, 0.004f, 6f, 0.5f),
+            MaskPreset.Star       => (10, 0.50f, 0.45f, 0.24f, 1.00f, 0f, 0.004f, 5f, 0.45f),
+            MaskPreset.LightCone  => (11, 0.18f, -0.05f, 1.40f, 1.00f, 1.0f, 0.06f, 5f, 0.10f),
+            MaskPreset.Stripes    => (12, 0.50f, 0.50f, 0.12f, 1.00f, 0.35f, 0.01f, 5f, 0.35f),
+            MaskPreset.Cross      => (13, 0.50f, 0.50f, 0.26f, 1.00f, 0f, 0.004f, 5f, 0.5f),
+            MaskPreset.SubjectEdge => (14, 0.50f, 0.50f, 0.015f, 1.00f, 0f, 0.02f, 5f, 0.5f),
+            MaskPreset.Vivid      => (15, 0.50f, 0.75f, 0.25f, 1.00f, 0f, 0.06f, 5f, 0.5f),
+            MaskPreset.Patches    => (16, 0.50f, 0.50f, 0.18f, 1.00f, 0f, 0.05f, 5f, 0.5f),
+            _                     => (0, 0.50f, 0.50f, 0.25f, 1.00f, 0f, 0.08f, 5f, 0.5f),
         };
         SetMaskMode(i, v.mode); SetMaskCx(i, v.cx); SetMaskCy(i, v.cy); SetMaskSize(i, v.size);
         SetMaskEllipse(i, v.ell); SetMaskAngle(i, v.ang); SetMaskFeather(i, v.feath); SetMaskInvert(i, false);
+        SetMaskSides(i, v.sides); SetMaskDetail(i, v.detail); SetMaskRound(i, 0f);
+        SetMaskRough(i, 0f); SetMaskRoughScale(i, 8f); SetMaskStrength(i, 1f);
+        SetMaskDepthLimit(i, 0); SetMaskMirror(i, 0); SetMaskEdge(i, 0);
     }
 
     public void SetUpTwoDiamondFrames()
@@ -3020,16 +3173,17 @@ public sealed class PluginConfig : IPluginConfiguration
         EnLens = true; Vignette = 0.42f; Grain = 0.05f; Sharpen = 0.35f; Chroma = 0f;
     }
 
-    public void ResetLook()
+    public void ResetLook(bool keepPlaced = true)
     {
         var def = new PluginConfig();
         foreach (var prop in typeof(PluginConfig).GetProperties())
         {
             if (!prop.CanRead || !prop.CanWrite) continue;
             if (LookStore.Exclude.Contains(prop.Name)) continue;
-            if (prop.Name is "Elem" or "ElemImages" or "Texts") continue;
+            if (keepPlaced && prop.Name is "Elem" or "ElemImages" or "Texts") continue;
             prop.SetValue(this, prop.GetValue(def));
         }
+        ReanchorElemFollowers();
     }
 
     internal Frame.Opts FrameOpts() => new(
@@ -3164,6 +3318,7 @@ public sealed class PluginConfig : IPluginConfiguration
         Array.Copy(Elem, from * ElemStride, Elem, to * ElemStride, ElemStride);
         if (ElemImages != null && from < ElemImages.Length && to < ElemImages.Length)
             ElemImages[to] = ElemImages[from];
+        _followPose[to * 4] = float.NaN;
     }
 
     public void ClearElemSlot(int slot)
@@ -3171,6 +3326,54 @@ public sealed class PluginConfig : IPluginConfiguration
         if (slot < 0 || slot >= 8) return;
         Array.Clear(Elem, slot * ElemStride, ElemStride);
         if (ElemImages != null && slot < ElemImages.Length) ElemImages[slot] = "";
+        _followPose[slot * 4] = float.NaN;
+    }
+
+    public const int ElemFollow = 23;
+    private readonly float[] _followPose = NewFollowPoses();
+    private static float[] NewFollowPoses() { var a = new float[8 * 4]; Array.Fill(a, float.NaN); return a; }
+
+    public int ElemFollowMask(int slot)
+    {
+        int v = (int)(Elem[slot * ElemStride + ElemFollow] + 0.5f) - 1;
+        return v >= 0 && v < MaskCount ? v : -1;
+    }
+
+    public void SetElemFollowMask(int slot, int mask)
+    {
+        Elem[slot * ElemStride + ElemFollow] = mask >= 0 && mask < MaskCount ? mask + 1 : 0f;
+        _followPose[slot * 4] = float.NaN;
+    }
+
+    public void ReanchorElemFollowers() => Array.Fill(_followPose, float.NaN);
+
+    public bool SyncElemFollowers(float asp)
+    {
+        bool moved = false;
+        float a = Math.Max(asp, 1e-4f);
+        for (int slot = 0; slot < 8; slot++)
+        {
+            int m = ElemFollowMask(slot), b = slot * ElemStride, f = slot * 4;
+            if (m < 0 || Elem[b] < 0.5f || !MaskPlaceable(MaskMode(m))) { _followPose[f] = float.NaN; continue; }
+            float cx = MaskCx(m), cy = MaskCy(m), size = MaskSize(m), ang = MaskAngle(m);
+            float pcx = _followPose[f], pcy = _followPose[f + 1], psz = _followPose[f + 2], pang = _followPose[f + 3];
+            _followPose[f] = cx; _followPose[f + 1] = cy; _followPose[f + 2] = size; _followPose[f + 3] = ang;
+            if (float.IsNaN(pcx) || (pcx == cx && pcy == cy && psz == size && pang == ang)) continue;
+
+            float turn = ang - pang, s = psz > 1e-5f ? size / psz : 1f;
+            float c = MathF.Cos(turn), sn = MathF.Sin(turn);
+            float ox = (0.5f + Elem[b + 1] - pcx) * a, oy = (0.5f - Elem[b + 2]) - pcy;
+            float rx = (ox * c - oy * sn) * s, ry = (ox * sn + oy * c) * s;
+            Elem[b + 1] = cx + rx / a - 0.5f;
+            Elem[b + 2] = 0.5f - (cy + ry);
+            float rot = Elem[b + 5] + turn;
+            rot -= MathF.Tau * MathF.Floor((rot + MathF.PI) / MathF.Tau);
+            Elem[b + 5] = rot;
+            Elem[b + 3] *= s;
+            if (Elem[b + 15] > 0.001f) Elem[b + 15] *= s;
+            moved = true;
+        }
+        return moved;
     }
 }
 

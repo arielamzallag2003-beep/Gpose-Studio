@@ -288,6 +288,8 @@ public static partial class LookStore
             && dict.ContainsKey("PatColOverride")
             && !dict.ContainsKey("BgBPatColOverride"))
             cfg.CarryPatternIdentity();
+        if (part == Part.All || part == Part.Other) cfg.ResetMaskSettingsMissingFrom(dict.ContainsKey);
+        cfg.ReanchorElemFollowers();
         return true;
     }
 
