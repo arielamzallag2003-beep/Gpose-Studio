@@ -106,4 +106,26 @@ public class TextMarkerTests
                 Assert.True(Equals(p.GetValue(m), p.GetValue(back)),
                     $"TextMarker.{p.Name} did not survive the round trip");
     }
+
+    [Fact]
+    public void ThePlateBannerFieldsSurviveALook()
+    {
+        var c = new PluginConfig();
+        c.Texts.Add(new TextMarker { Text = "CHALLENGER APPROACHING", PlateExtend = 2.75f, PlateFade = 0.32f });
+
+        var back = new PluginConfig();
+        Assert.True(LookStore.Apply(LookStore.Capture(c), back, LookStore.Part.All));
+
+        var t = Assert.Single(back.Texts);
+        Assert.Equal(2.75f, t.PlateExtend);
+        Assert.Equal(0.32f, t.PlateFade);
+    }
+
+    [Fact]
+    public void APlateDoesNotRunOnOrFadeUnlessAsked()
+    {
+        var t = new TextMarker();
+        Assert.Equal(0f, t.PlateExtend);
+        Assert.Equal(0f, t.PlateFade);
+    }
 }

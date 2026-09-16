@@ -135,13 +135,18 @@ internal static class TextRender
             if (tb.Width <= 0.01f || tb.Height <= 0.01f) return default;
 
             float platePad = em * Math.Clamp(t.PlatePad, 0f, 2f);
+            float plateExtend = em * Math.Clamp(t.PlateExtend, 0f, 6f);
+            float plateFade = Math.Clamp(t.PlateFade, 0f, 0.49f);
             bool hasPlate = t.Plate > 0.002f;
             using var plate = new GraphicsPath();
+            var plateAxis = new PointF[2];
             if (hasPlate)
             {
-                var r = RectangleF.Inflate(tb, platePad, platePad * 0.7f);
+                var r = RectangleF.Inflate(tb, platePad + plateExtend, platePad * 0.7f);
                 float round = Math.Min(r.Width, r.Height) * 0.5f * Math.Clamp(t.PlateRound, 0f, 1f);
                 AddRoundedRect(plate, r, round);
+                plateAxis[0] = new PointF(r.Left, r.Top + r.Height * 0.5f);
+                plateAxis[1] = new PointF(r.Right, r.Top + r.Height * 0.5f);
             }
 
             float rot = t.Rotation;
@@ -151,7 +156,7 @@ internal static class TextRender
                 var pivot = new PointF(tb.X + tb.Width * 0.5f, tb.Y + tb.Height * 0.5f);
                 m.RotateAt(rot * 180f / (float)Math.PI, pivot);
                 text.Transform(m);
-                if (hasPlate) plate.Transform(m);
+                if (hasPlate) { plate.Transform(m); m.TransformPoints(plateAxis); }
             }
 
             float outline = t.Outline ? Math.Max(1f, em * Math.Clamp(t.OutlineWidth, 0.01f, 0.30f)) : 0f;
@@ -170,7 +175,7 @@ internal static class TextRender
             {
                 m.Translate(-all.X, -all.Y);
                 text.Transform(m);
-                if (hasPlate) plate.Transform(m);
+                if (hasPlate) { plate.Transform(m); m.TransformPoints(plateAxis); }
             }
 
             byte A(float v) => (byte)Math.Clamp((int)(v * 255f + 0.5f), 0, 255);
@@ -178,9 +183,33 @@ internal static class TextRender
             var outp = new byte[w * h * 4];
 
             if (hasPlate)
-                Over(outp, Fill(w, h, g => { using var b = new SolidBrush(Color.FromArgb(
-                        A(alpha * Math.Clamp(t.Plate, 0f, 1f)), A(t.PlateR), A(t.PlateG), A(t.PlateB)));
-                    g.FillPath(b, plate); }), w, h);
+            {
+                byte pa = A(alpha * Math.Clamp(t.Plate, 0f, 1f));
+                var solid = Color.FromArgb(pa, A(t.PlateR), A(t.PlateG), A(t.PlateB));
+                float axisLen = Math.Abs(plateAxis[1].X - plateAxis[0].X) + Math.Abs(plateAxis[1].Y - plateAxis[0].Y);
+                bool ramp = plateFade > 0.001f && axisLen > 1f;
+                Over(outp, Fill(w, h, g =>
+                {
+                    if (!ramp)
+                    {
+                        using var b = new SolidBrush(solid);
+                        g.FillPath(b, plate);
+                        return;
+                    }
+                    float ax = plateAxis[1].X - plateAxis[0].X, ay = plateAxis[1].Y - plateAxis[0].Y;
+                    float inv = 1f / MathF.Max(MathF.Sqrt(ax * ax + ay * ay), 1e-3f);
+                    var g0 = new PointF(plateAxis[0].X - ax * inv, plateAxis[0].Y - ay * inv);
+                    var g1 = new PointF(plateAxis[1].X + ax * inv, plateAxis[1].Y + ay * inv);
+                    using var lb = new LinearGradientBrush(g0, g1, solid, solid);
+                    var clear = Color.FromArgb(0, solid);
+                    lb.InterpolationColors = new ColorBlend(4)
+                    {
+                        Colors = new[] { clear, solid, solid, clear },
+                        Positions = new[] { 0f, plateFade, 1f - plateFade, 1f },
+                    };
+                    g.FillPath(lb, plate);
+                }), w, h);
+            }
 
             if (shDist > 0f || shSoft > 0f || t.ShadowAmount > 0.002f)
             {

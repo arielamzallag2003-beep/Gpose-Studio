@@ -2553,6 +2553,12 @@ public sealed class MainWindow : Window, IDisposable
                 t.PlateR = pc.X; t.PlateG = pc.Y; t.PlateB = pc.Z;
                 t.PlatePad = Knob("  Padding", t.PlatePad, 0f, 1.5f, 0.35f, "Space around the text, as a fraction of the text height.");
                 t.PlateRound = Knob("  Corner", t.PlateRound, 0f, 1f, 0.30f, "0 = square corners, 1 = fully rounded ends.");
+                t.PlateExtend = Knob("  Run on", t.PlateExtend, 0f, 6f, 0f,
+                    "Carries the panel past the words at both ends, in text heights.\n" +
+                    "Padding makes a label that hugs its text; this makes a banner.", "%.2f");
+                t.PlateFade = Knob("  Fade ends", t.PlateFade, 0f, 0.49f, 0f,
+                    "How much of each end dissolves instead of stopping, as a fraction\n" +
+                    "of the panel's length. A banner that fades out has no edge to notice.", "%.3f");
             }
             ImGui.Unindent(10f);
         }
