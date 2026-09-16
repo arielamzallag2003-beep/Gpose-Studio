@@ -128,4 +128,17 @@ public class TextMarkerTests
         Assert.Equal(0f, t.PlateExtend);
         Assert.Equal(0f, t.PlateFade);
     }
+
+    [Fact]
+    public void TheTurnAwaySurvivesALookAndStartsAtNone()
+    {
+        Assert.Equal(0f, new TextMarker().Yaw);
+
+        var c = new PluginConfig();
+        c.Texts.Add(new TextMarker { Text = "A new foe has appeared!", Yaw = -0.62f });
+
+        var back = new PluginConfig();
+        Assert.True(LookStore.Apply(LookStore.Capture(c), back, LookStore.Part.All));
+        Assert.Equal(-0.62f, Assert.Single(back.Texts).Yaw);
+    }
 }

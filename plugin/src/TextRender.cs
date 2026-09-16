@@ -247,7 +247,8 @@ internal static class TextRender
                 g.FillPath(brush, text);
             }), w, h);
 
-            return new Raster(w, h, outp, -w / 2, -h / 2);
+            var flat = new Raster(w, h, outp, -w / 2, -h / 2);
+            return Math.Abs(t.Yaw) > 0.002f ? Yawed(flat, t.Yaw) : flat;
         }
         catch (Exception ex)
         {
@@ -386,6 +387,72 @@ internal static class TextRender
             int ay = (int)Math.Round((t.Y - cropY0) / ch * h);
             Blit(rgba, w, h, r, ax + r.OffX, ay + r.OffY);
         }
+    }
+
+    private static Raster Yawed(in Raster src, float yaw)
+    {
+        float a = Math.Clamp(yaw, -1.2f, 1.2f);
+        float sin = MathF.Sin(a), cos = MathF.Cos(a);
+        float hw = src.W * 0.5f, hh = src.H * 0.5f;
+        float focal = MathF.Max(src.W, src.H) * 1.8f;
+
+        (float x, float y) Project(float sx, float sy)
+        {
+            float k = focal / MathF.Max(focal - sx * sin, 1e-3f);
+            return (sx * cos * k, sy * k);
+        }
+
+        float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+        foreach (var (cx, cy) in new[] { (-hw, -hh), (hw, -hh), (-hw, hh), (hw, hh) })
+        {
+            var (px, py) = Project(cx, cy);
+            minX = MathF.Min(minX, px); maxX = MathF.Max(maxX, px);
+            minY = MathF.Min(minY, py); maxY = MathF.Max(maxY, py);
+        }
+
+        int w = (int)MathF.Ceiling(maxX - minX), h = (int)MathF.Ceiling(maxY - minY);
+        if (w <= 0 || h <= 0 || (long)w * h > 64L * 1024 * 1024 / 4) return src;
+        var dst = new byte[w * h * 4];
+
+        for (int y = 0; y < h; y++)
+        {
+            float py = minY + y + 0.5f;
+            for (int x = 0; x < w; x++)
+            {
+                float px = minX + x + 0.5f;
+                float denom = cos * focal + px * sin;
+                if (MathF.Abs(denom) < 1e-4f) continue;
+                float sx = px * focal / denom;
+                float k = focal / MathF.Max(focal - sx * sin, 1e-3f);
+                float sy = py / k;
+
+                float u = sx + hw - 0.5f, v = sy + hh - 0.5f;
+                if (u < -0.5f || v < -0.5f || u > src.W - 0.5f || v > src.H - 0.5f) continue;
+
+                int x0 = (int)MathF.Floor(u), y0 = (int)MathF.Floor(v);
+                float fx = u - x0, fy = v - y0;
+                float r = 0f, g = 0f, b = 0f, al = 0f;
+                for (int j = 0; j < 2; j++)
+                    for (int i = 0; i < 2; i++)
+                    {
+                        int xi = Math.Clamp(x0 + i, 0, src.W - 1), yi = Math.Clamp(y0 + j, 0, src.H - 1);
+                        float wgt = (i == 0 ? 1f - fx : fx) * (j == 0 ? 1f - fy : fy);
+                        if (wgt <= 0f) continue;
+                        int si = (yi * src.W + xi) * 4;
+                        float sa = src.Rgba[si + 3] / 255f;
+                        r += src.Rgba[si] * sa * wgt; g += src.Rgba[si + 1] * sa * wgt;
+                        b += src.Rgba[si + 2] * sa * wgt; al += sa * wgt;
+                    }
+                if (al <= 0.0005f) continue;
+                int d = (y * w + x) * 4;
+                dst[d] = (byte)Math.Clamp((int)(r / al + 0.5f), 0, 255);
+                dst[d + 1] = (byte)Math.Clamp((int)(g / al + 0.5f), 0, 255);
+                dst[d + 2] = (byte)Math.Clamp((int)(b / al + 0.5f), 0, 255);
+                dst[d + 3] = (byte)Math.Clamp((int)(al * 255f + 0.5f), 0, 255);
+            }
+        }
+
+        return new Raster(w, h, dst, (int)MathF.Round(minX), (int)MathF.Round(minY));
     }
 
     internal static void Blit(byte[] dst, int dw, int dh, in Raster r, int x0, int y0)

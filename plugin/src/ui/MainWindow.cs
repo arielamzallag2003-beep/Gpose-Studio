@@ -2458,6 +2458,11 @@ public sealed class MainWindow : Window, IDisposable
         t.X = Knob("Position X", t.X, 0f, 1f, 0.5f, "Horizontal position (0 = left, 1 = right).\nThe caption is anchored at its middle, so editing the wording does not move it.", "%.3f");
         t.Y = Knob("Position Y", t.Y, 0f, 1f, 0.5f, "Vertical position (0 = top, 1 = bottom).", "%.3f");
         t.Rotation = Knob("Rotation", t.Rotation, -3.15f, 3.15f, 0f, "Turns the caption. The plate and the shadow turn with it.");
+        t.Yaw = Knob("Turn away", t.Yaw, -1.2f, 1.2f, 0f,
+            "Turns the caption about the UP axis, like a sign angled away from you:\n" +
+            "one end nearer and larger, the other smaller, the edges converging.\n" +
+            "Rotation turns it in the plane of the picture; this turns it out of that\n" +
+            "plane, which is what makes a title stand IN the shot rather than on it.");
         t.Size = Knob("Size", t.Size, 0.005f, 0.30f, 0.06f,
             "Text height as a fraction of the frame height, not pixels \u2014 so a caption is\nthe same size relative to the picture at 1x and at 4x.", "%.3f");
 

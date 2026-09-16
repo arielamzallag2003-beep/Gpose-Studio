@@ -3417,5 +3417,7 @@ public sealed class TextMarker
     public float PlateRound { get; set; } = 0.30f;
     public float PlateExtend { get; set; }
     public float PlateFade { get; set; }
+
+    public float Yaw { get; set; }
 }
 
