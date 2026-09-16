@@ -3418,6 +3418,24 @@ public sealed class TextMarker
     public float PlateExtend { get; set; }
     public float PlateFade { get; set; }
 
+    private static readonly System.Reflection.PropertyInfo[] KeyProps =
+        System.Linq.Enumerable.ToArray(
+            System.Linq.Enumerable.OrderBy(
+                System.Linq.Enumerable.Where(typeof(TextMarker).GetProperties(), p => p.CanRead),
+                p => p.Name, StringComparer.Ordinal));
+
+    public string PixelKey(float pxSize)
+    {
+        var sb = new System.Text.StringBuilder(128);
+        sb.Append(pxSize.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
+        foreach (var p in KeyProps)
+        {
+            sb.Append('|');
+            sb.Append(Convert.ToString(p.GetValue(this), System.Globalization.CultureInfo.InvariantCulture));
+        }
+        return sb.ToString();
+    }
+
     public float Yaw { get; set; }
 }
 

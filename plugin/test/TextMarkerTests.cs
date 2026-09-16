@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using GPoseStudio;
 using Xunit;
 
@@ -127,6 +128,40 @@ public class TextMarkerTests
         var t = new TextMarker();
         Assert.Equal(0f, t.PlateExtend);
         Assert.Equal(0f, t.PlateFade);
+    }
+
+    [Fact]
+    public void EveryCaptionSettingChangesTheKeyThePreviewCachesOn()
+    {
+        var missed = new List<string>();
+        foreach (var p in typeof(TextMarker).GetProperties())
+        {
+            if (!p.CanRead || !p.CanWrite) continue;
+            var t = new TextMarker();
+            string before = t.PixelKey(40f);
+
+            object? moved = p.PropertyType switch
+            {
+                var x when x == typeof(float) => (float)p.GetValue(t)! + 0.37f,
+                var x when x == typeof(int) => (int)p.GetValue(t)! + 1,
+                var x when x == typeof(bool) => !(bool)p.GetValue(t)!,
+                var x when x == typeof(string) => (string?)p.GetValue(t) == "moved" ? "other" : "moved",
+                _ => null,
+            };
+            if (moved is null) continue;
+
+            p.SetValue(t, moved);
+            if (t.PixelKey(40f) == before) missed.Add(p.Name);
+        }
+
+        Assert.True(missed.Count == 0, "not in the preview's cache key: " + string.Join(", ", missed));
+    }
+
+    [Fact]
+    public void TheSizeItWasRasterisedAtIsInTheKeyToo()
+    {
+        var t = new TextMarker { Text = "CHALLENGER" };
+        Assert.NotEqual(t.PixelKey(40f), t.PixelKey(80f));
     }
 
     [Fact]

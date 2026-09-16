@@ -1025,13 +1025,7 @@ public sealed class LiveOverlay : IDisposable
     }
 
     private static string TextKey(TextMarker t, float frameH)
-        => string.Join('|', t.Text, TextRender.PixelSize(t, frameH).ToString("0.0"),
-                       t.R, t.G, t.B, t.A, t.Align, t.Outline, t.Font, t.Bold, t.Italic,
-                       t.OutlineWidth, t.OutlineR, t.OutlineG, t.OutlineB,
-                       t.LineHeight, t.Tracking, t.Rotation,
-                       t.ShadowAmount, t.ShadowDist, t.ShadowAngle, t.ShadowSoft,
-                       t.ShadowR, t.ShadowG, t.ShadowB,
-                       t.Plate, t.PlateR, t.PlateG, t.PlateB, t.PlatePad, t.PlateRound);
+        => t.PixelKey(TextRender.PixelSize(t, frameH));
 
     private readonly Dictionary<int, (string Key, IDalamudTextureWrap Tex, int W, int H, int OffX, int OffY)> _textCache = new();
 
