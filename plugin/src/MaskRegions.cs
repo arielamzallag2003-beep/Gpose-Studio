@@ -25,11 +25,17 @@ public static class MaskRegions
     private static readonly Dictionary<string, PropertyInfo> ByName =
         Overridable.ToDictionary(p => p.Name, StringComparer.Ordinal);
 
+    private static readonly PluginConfig Reference = new();
+
     internal static bool IsOverridable(PropertyInfo p)
     {
         if (!p.CanRead || !p.CanWrite || p.GetIndexParameters().Length != 0) return false;
         var t = p.PropertyType;
-        if (t != typeof(float) && t != typeof(int) && t != typeof(bool)) return false;
+        if (t == typeof(float[]))
+        {
+            if (p.Name != nameof(PluginConfig.FgField)) return false;
+        }
+        else if (t != typeof(float) && t != typeof(int) && t != typeof(bool)) return false;
         if (LookStore.Exclude.Contains(p.Name)) return false;
         string n = p.Name;
         if (n.StartsWith("Mask", StringComparison.Ordinal)) return false;
@@ -42,8 +48,30 @@ public static class MaskRegions
 
     public static void BuildVariant(PluginConfig baseCfg, string? overrides, PluginConfig into)
     {
-        foreach (var p in All) p.SetValue(into, p.GetValue(baseCfg));
+        foreach (var p in All)
+        {
+            var v = p.GetValue(baseCfg);
+            if (v is float[] src && p.GetValue(into) is float[] dst && dst.Length == src.Length)
+                Array.Copy(src, dst, src.Length);
+            else if (v is string[] ssrc && p.GetValue(into) is string[] sdst && sdst.Length == ssrc.Length)
+                Array.Copy(ssrc, sdst, ssrc.Length);
+            else p.SetValue(into, Copy(v));
+        }
         ApplyOverrides(overrides, into);
+    }
+
+    private static object? Copy(object? v) => v switch
+    {
+        float[] a => a.Clone(),
+        string[] a => a.Clone(),
+        _ => v,
+    };
+
+    private static bool SameValue(object? a, object? b)
+    {
+        if (a is float[] x && b is float[] y) return x.AsSpan().SequenceEqual(y);
+        if (a is string[] sx && b is string[] sy) return sx.AsSpan().SequenceEqual(sy);
+        return Equals(a, b);
     }
 
     public static int ApplyOverrides(string? overrides, PluginConfig into)
@@ -51,7 +79,7 @@ public static class MaskRegions
         int n = 0;
         foreach (var (name, value) in ToObjects(overrides))
         {
-            ByName[name].SetValue(into, value);
+            ByName[name].SetValue(into, Copy(value));
             n++;
         }
         return n;
@@ -117,6 +145,7 @@ public static class MaskRegions
 
     public static string Label(string name)
     {
+        if (name == nameof(PluginConfig.FgField)) return "Foreground layer (the field itself)";
         bool toggle = name.Length > 2 && name.StartsWith("En", StringComparison.Ordinal) && char.IsUpper(name[2]);
         string s = toggle ? name.Substring(2) : name;
         var sb = new System.Text.StringBuilder(s.Length + 12);
@@ -144,7 +173,13 @@ public static class MaskRegions
             {
                 if (p.PropertyType == typeof(float)) d[name] = el.GetSingle();
                 else if (p.PropertyType == typeof(int)) d[name] = el.GetInt32();
-                else d[name] = el.GetBoolean();
+                else if (p.PropertyType == typeof(bool)) d[name] = el.GetBoolean();
+                else if (p.PropertyType == typeof(float[]))
+                {
+                    var arr = el.Deserialize<float[]>(ReadOptions);
+                    int want = (p.GetValue(Reference) as float[])?.Length ?? -1;
+                    if (arr != null && arr.Length == want) d[name] = arr;
+                }
             }
             catch {  }
         }
@@ -162,7 +197,7 @@ public static class MaskRegions
         public void Begin(PluginConfig baseCfg, string? overrides)
         {
             BuildVariant(baseCfg, overrides, Variant);
-            for (int k = 0; k < All.Length; k++) _atBegin[k] = All[k].GetValue(Variant);
+            for (int k = 0; k < All.Length; k++) _atBegin[k] = Copy(All[k].GetValue(Variant));
         }
 
         public string? End(PluginConfig baseCfg, string? currentOverrides)
@@ -172,11 +207,11 @@ public static class MaskRegions
             {
                 var p = All[k];
                 var v = p.GetValue(Variant);
-                if (Equals(v, _atBegin[k])) continue;
-                if (!AllOverridable[k]) { p.SetValue(baseCfg, v); continue; }
+                if (SameValue(v, _atBegin[k])) continue;
+                if (!AllOverridable[k]) { p.SetValue(baseCfg, Copy(v)); continue; }
                 next ??= ToObjects(currentOverrides);
-                if (Equals(p.GetValue(baseCfg), v)) next.Remove(p.Name);
-                else next[p.Name] = v!;
+                if (SameValue(p.GetValue(baseCfg), v)) next.Remove(p.Name);
+                else next[p.Name] = Copy(v)!;
             }
             return next == null ? null : Serialize(next);
         }
