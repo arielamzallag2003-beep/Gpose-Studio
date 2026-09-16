@@ -158,6 +158,36 @@ public class TextMarkerTests
     }
 
     [Fact]
+    public void CloningACaptionKeepsEverySetting()
+    {
+        var t = new TextMarker();
+        foreach (var p in typeof(TextMarker).GetProperties())
+        {
+            if (!p.CanRead || !p.CanWrite) continue;
+            object? moved = p.PropertyType switch
+            {
+                var x when x == typeof(float) => (float)p.GetValue(t)! + 0.41f,
+                var x when x == typeof(int) => (int)p.GetValue(t)! + 3,
+                var x when x == typeof(bool) => !(bool)p.GetValue(t)!,
+                var x when x == typeof(string) => "moved",
+                _ => null,
+            };
+            if (moved is not null) p.SetValue(t, moved);
+        }
+
+        var copy = t.Clone();
+
+        var lost = new List<string>();
+        foreach (var p in typeof(TextMarker).GetProperties())
+        {
+            if (!p.CanRead || !p.CanWrite) continue;
+            if (!Equals(p.GetValue(copy), p.GetValue(t))) lost.Add(p.Name);
+        }
+        Assert.True(lost.Count == 0, "dropped by Clone: " + string.Join(", ", lost));
+        Assert.NotSame(t, copy);
+    }
+
+    [Fact]
     public void TheSizeItWasRasterisedAtIsInTheKeyToo()
     {
         var t = new TextMarker { Text = "CHALLENGER" };

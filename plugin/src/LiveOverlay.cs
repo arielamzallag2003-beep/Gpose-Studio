@@ -1005,22 +1005,7 @@ public sealed class LiveOverlay : IDisposable
         var outp = new List<TextMarker>();
         if (cfg.Texts == null) return outp;
         foreach (var t in cfg.Texts)
-        {
-            if (t == null || string.IsNullOrEmpty(t.Text)) continue;
-            outp.Add(new TextMarker
-            {
-                Text = t.Text, X = t.X, Y = t.Y, Size = t.Size,
-                R = t.R, G = t.G, B = t.B, A = t.A,
-                Align = t.Align, Outline = t.Outline, Font = t.Font,
-                Bold = t.Bold, Italic = t.Italic, OutlineWidth = t.OutlineWidth,
-                OutlineR = t.OutlineR, OutlineG = t.OutlineG, OutlineB = t.OutlineB,
-                LineHeight = t.LineHeight, Tracking = t.Tracking, Rotation = t.Rotation,
-                ShadowAmount = t.ShadowAmount, ShadowDist = t.ShadowDist, ShadowAngle = t.ShadowAngle,
-                ShadowSoft = t.ShadowSoft, ShadowR = t.ShadowR, ShadowG = t.ShadowG, ShadowB = t.ShadowB,
-                Plate = t.Plate, PlateR = t.PlateR, PlateG = t.PlateG, PlateB = t.PlateB,
-                PlatePad = t.PlatePad, PlateRound = t.PlateRound,
-            });
-        }
+            if (t != null && !string.IsNullOrEmpty(t.Text)) outp.Add(t.Clone());
         return outp;
     }
 

@@ -3424,6 +3424,17 @@ public sealed class TextMarker
                 System.Linq.Enumerable.Where(typeof(TextMarker).GetProperties(), p => p.CanRead),
                 p => p.Name, StringComparer.Ordinal));
 
+    private static readonly System.Reflection.PropertyInfo[] CopyProps =
+        System.Linq.Enumerable.ToArray(
+            System.Linq.Enumerable.Where(typeof(TextMarker).GetProperties(), p => p.CanRead && p.CanWrite));
+
+    public TextMarker Clone()
+    {
+        var copy = new TextMarker();
+        foreach (var p in CopyProps) p.SetValue(copy, p.GetValue(this));
+        return copy;
+    }
+
     public string PixelKey(float pxSize)
     {
         var sb = new System.Text.StringBuilder(128);

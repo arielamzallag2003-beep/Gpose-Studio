@@ -2571,18 +2571,10 @@ public sealed class MainWindow : Window, IDisposable
         ImGui.Spacing();
         if (ImGui.SmallButton("Duplicate##t"))
         {
-            cfg.Texts.Insert(_textSel + 1, new TextMarker
-            {
-                Text = t.Text, X = Math.Clamp(t.X + 0.03f, 0f, 1f), Y = Math.Clamp(t.Y + 0.05f, 0f, 1f),
-                Size = t.Size, R = t.R, G = t.G, B = t.B, A = t.A, Align = t.Align,
-                Outline = t.Outline, Font = t.Font, Bold = t.Bold, Italic = t.Italic,
-                OutlineWidth = t.OutlineWidth, OutlineR = t.OutlineR, OutlineG = t.OutlineG, OutlineB = t.OutlineB,
-                LineHeight = t.LineHeight, Tracking = t.Tracking, Rotation = t.Rotation,
-                ShadowAmount = t.ShadowAmount, ShadowDist = t.ShadowDist, ShadowAngle = t.ShadowAngle,
-                ShadowSoft = t.ShadowSoft, ShadowR = t.ShadowR, ShadowG = t.ShadowG, ShadowB = t.ShadowB,
-                Plate = t.Plate, PlateR = t.PlateR, PlateG = t.PlateG, PlateB = t.PlateB,
-                PlatePad = t.PlatePad, PlateRound = t.PlateRound,
-            });
+            var copy = t.Clone();
+            copy.X = Math.Clamp(t.X + 0.03f, 0f, 1f);
+            copy.Y = Math.Clamp(t.Y + 0.05f, 0f, 1f);
+            cfg.Texts.Insert(_textSel + 1, copy);
             _textSel++;
             _dirty = true;
         }
