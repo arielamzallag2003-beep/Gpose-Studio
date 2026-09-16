@@ -87,6 +87,12 @@ public sealed class MainWindow : Window, IDisposable
     private string _lookName = "";
     private List<string> _lookList = new();
 
+    private long _looksScanAt;
+    private string _looksStamp = "";
+    private DateTime _loadedFileAt;
+    private bool _loadedFileChanged;
+    private const int LooksScanMs = 1000;
+
     public MainWindow(GposeGate gate, LiveOverlay live) : base("GPoseStudio###gposestudio_main")
     {
         _gate = gate;
@@ -3615,6 +3621,48 @@ public sealed class MainWindow : Window, IDisposable
             _status = result.StartsWith("error:") ? result : $"Saved: {result}");
     }
 
+    private void MarkLookFileSeen()
+    {
+        _loadedFileAt = LookStore.WriteTimeOf(_lookSel);
+        _loadedFileChanged = false;
+    }
+
+    private bool ReloadSelected(PluginConfig cfg)
+    {
+        if (_lookSel.Length == 0 || !_lookList.Contains(_lookSel)) return false;
+        PushUndo(cfg);
+        if (!LookStore.Load(_lookSel, cfg, LookStore.Part.All)) return false;
+        _dirty = true;
+        _loadedSnapshot = LookStore.Capture(cfg);
+        _editedSinceLoad = false;
+        MarkLookFileSeen();
+        return true;
+    }
+
+    private void ScanLooksFolder(PluginConfig cfg)
+    {
+        long now = Environment.TickCount64;
+        if (now < _looksScanAt) return;
+        _looksScanAt = now + LooksScanMs;
+
+        var stamp = LookStore.FolderStamp();
+        if (stamp == _looksStamp) return;
+
+        bool first = _looksStamp.Length == 0;
+        _looksStamp = stamp;
+        _lookList = LookStore.List();
+        if (first) { MarkLookFileSeen(); return; }
+
+        var at = LookStore.WriteTimeOf(_lookSel);
+        if (_lookSel.Length == 0 || at == default || at <= _loadedFileAt) return;
+
+        if (!_editedSinceLoad && !_dirty && !_savePending && _peekBackup.Length == 0)
+        {
+            if (ReloadSelected(cfg)) _status = $"‘{_lookSel}’ changed on disk — reloaded.";
+        }
+        else _loadedFileChanged = true;
+    }
+
     private void DrawLooksTab(PluginConfig cfg)
     {
         using var tab = ImRaii.TabItem("Looks");
@@ -3624,6 +3672,8 @@ public sealed class MainWindow : Window, IDisposable
 
     private void LooksBody(PluginConfig cfg)
     {
+        ScanLooksFolder(cfg);
+
         var cat = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (bn, bc, _) in LookStore.Builtins) cat[bn] = bc;
         var legacyCat = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -3670,6 +3720,7 @@ public sealed class MainWindow : Window, IDisposable
                         _dirty = true;
                         _loadedSnapshot = LookStore.Capture(cfg);
                         _editedSinceLoad = false;
+                        MarkLookFileSeen();
                         _status = $"Reverted to the saved \u2018{_lookSel}\u2019.";
                     }
                     else _status = $"Could not re-read \u2018{_lookSel}\u2019.";
@@ -3687,6 +3738,7 @@ public sealed class MainWindow : Window, IDisposable
                     LookStore.Load(_lookSel, cfg);
                     _dirty = true;
                     _lookList = LookStore.List();
+                    MarkLookFileSeen();
                     _status = $"Reset \u2018{_lookSel}\u2019 to its original.";
                 }
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Put this built-in look back the way it shipped.");
@@ -3700,6 +3752,7 @@ public sealed class MainWindow : Window, IDisposable
                         _status = $"Deleted \u2018{_lookSel}\u2019.";
                         cfg.PinnedLooks.Remove(_lookSel);
                         _lookSel = ""; _confirmDelete = "";
+                        MarkLookFileSeen();
                     }
                     else _status = delError;
                     _lookList = LookStore.List();
@@ -3708,6 +3761,19 @@ public sealed class MainWindow : Window, IDisposable
                 if (ImGui.Button("Keep##lookkeep", new Vector2(60f, 0))) _confirmDelete = "";
             }
             else if (ImGui.Button("Delete##looksel", new Vector2(70f, 0))) _confirmDelete = _lookSel;
+
+            if (_loadedFileChanged)
+            {
+                ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), "The file changed on disk.");
+                ImGui.SameLine();
+                if (ImGui.SmallButton("Reload it##lookdisk"))
+                    _status = ReloadSelected(cfg)
+                        ? $"Reloaded ‘{_lookSel}’ from disk."
+                        : $"Could not re-read ‘{_lookSel}’.";
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+                    "Something outside this panel wrote this look. Reloading takes what the file\n" +
+                    "says now and drops the changes on screen. Undo brings them back.");
+            }
         }
         else
         {
@@ -3754,6 +3820,7 @@ public sealed class MainWindow : Window, IDisposable
                             : $"Saved the {UiApplyPart[_savePart]} of \u2018{trimmed}\u2019 \u2014 loading it leaves everything else alone.";
                         _lookList = LookStore.List();
                         _lookSel = trimmed;
+                        MarkLookFileSeen();
                     }
                     else _status = saveError;
                 }
@@ -3890,13 +3957,29 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.Unindent(10f);
         }
 
-        ImGui.PushItemWidth(-150f);
+        ImGui.PushItemWidth(-226f);
         var f = _lookFilter;
         if (ImGui.InputTextWithHint("##lookfilter", "Search looks\u2026", ref f, 64)) _lookFilter = f;
         ImGui.PopItemWidth();
         ImGui.SameLine();
         using (ImRaii.Disabled(_lookFilter.Length == 0))
             if (ImGui.Button("Clear", new Vector2(60f, 0))) { _lookFilter = ""; _confirmDelete = ""; }
+        ImGui.SameLine();
+        if (ImGui.Button("Reload", new Vector2(70f, 0)))
+        {
+            _looksStamp = LookStore.FolderStamp();
+            _lookList = LookStore.List();
+            _confirmDelete = "";
+            if (_lookSel.Length > 0 && _lookList.Contains(_lookSel))
+                _status = ReloadSelected(cfg)
+                    ? $"Re-read the looks folder and reloaded \u2018{_lookSel}\u2019."
+                    : $"Re-read the looks folder. \u2018{_lookSel}\u2019 could not be read.";
+            else _status = $"Re-read the looks folder \u2014 {_lookList.Count} looks.";
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(
+            "Read the looks folder again, and the loaded look with it, for looks written\n" +
+            "or edited outside the game. It happens on its own within a second or so;\n" +
+            "this is for not waiting. Undoable.");
         ImGui.SameLine();
         ImGui.TextDisabled($"{_lookList.Count}");
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Looks saved on this machine.\nRight-click any of them to pin it to the top.");
@@ -4016,6 +4099,7 @@ public sealed class MainWindow : Window, IDisposable
                         _loadedSnapshot = LookStore.Capture(cfg);
                         _editedSinceLoad = false;
                     }
+                    MarkLookFileSeen();
                     _status = part == LookStore.Part.All
                         ? $"Loaded \u2018{n}\u2019."
                         : $"Loaded the {UiApplyPart[_applyPart].ToLowerInvariant()} from \u2018{n}\u2019.";

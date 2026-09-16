@@ -82,6 +82,27 @@ public static partial class LookStore
         catch { return new List<string>(); }
     }
 
+    public static string FolderStamp()
+    {
+        try
+        {
+            return string.Join(";", Directory.GetFiles(FolderPath, "*.json")
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                .Select(f => Path.GetFileName(f) + File.GetLastWriteTimeUtc(f).Ticks));
+        }
+        catch { return ""; }
+    }
+
+    public static DateTime WriteTimeOf(string? name)
+    {
+        try
+        {
+            return TryResolve(name, out var path, out _) && File.Exists(path)
+                ? File.GetLastWriteTimeUtc(path) : default;
+        }
+        catch { return default; }
+    }
+
     private static readonly HashSet<string> NotShareable = new() { "ElemImages" };
 
     private static readonly PropertyInfo[] Props = typeof(PluginConfig).GetProperties();

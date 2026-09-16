@@ -38,6 +38,7 @@
     <Compile Include="FrameTests.cs" />
     <Compile Include="BuiltinGuardTests.cs" />
     <Compile Include="LookRoundTripTests.cs" />
+    <Compile Include="LookWatchTests.cs" />
     <Compile Include="ZoneBitsTests.cs" />
     <Compile Include="ElementImagesTests.cs" />
     <Compile Include="ElementLayerTests.cs" />
