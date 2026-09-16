@@ -615,6 +615,8 @@ public sealed class LiveOverlay : IDisposable
     private readonly List<PluginConfig.MaskPose> _groupStart = new();
     private Vector2 _groupCentre;
     private const float GroupHandleReach = 0.16f;
+    private const float DragSizeMax = 6f;
+    private const float DragReachMax = 12f;
     private const float WedgeHandleReach = 0.45f;
 
     private void DrawGroupPlacement(PluginConfig cfg, int[] group)
@@ -835,19 +837,19 @@ public sealed class LiveOverlay : IDisposable
                     Vector2 r = new((t.X - centre.X) / Math.Max(kx, 1f), (t.Y - centre.Y) / Math.Max(ky, 1f));
                     if (mode is 1 or 4 or 9 or 10 or 13)
                     {
-                        size = Math.Clamp(r.Length() / Math.Max(ell, 0.05f), 0.01f, 1.5f);
+                        size = Math.Clamp(r.Length() / Math.Max(ell, 0.05f), 0.01f, DragSizeMax);
                         ang = (float)Math.Atan2(-r.X, r.Y);
                     }
                     else if (mode is 5 or 16)
                     {
-                        size = Math.Clamp(r.Length(), 0.01f, 1.5f);
+                        size = Math.Clamp(r.Length(), 0.01f, DragSizeMax);
                         ang = (float)Math.Atan2(-r.X, r.Y);
                     }
                     else if (mode == 11)
                     {
                         ang = (float)Math.Atan2(r.Y, r.X);
                         float len = r.Length();
-                        if (size <= WedgeHandleReach || len < WedgeHandleReach * 0.95f) size = Math.Clamp(len, 0.01f, 3f);
+                        if (size <= WedgeHandleReach || len < WedgeHandleReach * 0.95f) size = Math.Clamp(len, 0.01f, DragReachMax);
                     }
                     else ang = (float)Math.Atan2(-r.Y, -r.X);
                 }

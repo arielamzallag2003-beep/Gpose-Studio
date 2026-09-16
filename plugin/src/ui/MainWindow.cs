@@ -2394,17 +2394,19 @@ public sealed class MainWindow : Window, IDisposable
         if (ImGui.Checkbox("Flip vertically##eimg", ref fv)) { cfg.SetElemFlag(slotSel, PluginConfig.ElemFlagFlipV, fv); _dirty = true; }
     }
 
-    private float Knob(string label, float v, float min, float max, float def, string? tip = null, string fmt = "%.2f")
+    private float Knob(string label, float v, float min, float max, float def, string? tip = null, string fmt = "%.2f",
+                       ImGuiSliderFlags flags = ImGuiSliderFlags.None)
     {
         ImGui.TextUnformatted(Shown(label));
         var t = v;
         ImGui.PushItemWidth(-1f);
-        if (ImGui.SliderFloat("##" + label, ref t, min, max, fmt)) _dirty = true;
+        if (ImGui.SliderFloat("##" + label, ref t, min, max, fmt, flags)) _dirty = true;
         if (ImGui.IsItemClicked(ImGuiMouseButton.Right)) { t = def; _dirty = true; }
         bool hovered = ImGui.IsItemHovered();
         ImGui.PopItemWidth();
         if (hovered)
-            ImGui.SetTooltip((tip != null ? tip + "\n" : "") + "Right-click: reset to default");
+            ImGui.SetTooltip((tip != null ? tip + "\n" : "")
+                             + "Ctrl-click: type a value. Right-click: reset to default");
         return t;
     }
 
@@ -3037,9 +3039,13 @@ public sealed class MainWindow : Window, IDisposable
         _ => name,
     };
 
+    private const float ShapeMax = 6f;
+
+    private const ImGuiSliderFlags LogSlider = ImGuiSliderFlags.Logarithmic;
+
     private void DrawMaskShapeKnobs(PluginConfig cfg, int m, int md, char letter)
     {
-        void Centre(string what, float defY, float lo = 0f, float hi = 1f)
+        void Centre(string what, float defY, float lo = -1f, float hi = 2f)
         {
             cfg.SetMaskCx(m, Knob(what + " X##mk" + letter, cfg.MaskCx(m), lo, hi, 0.5f, "Across the frame. 0 = left edge, 1 = right.", "%.3f"));
             cfg.SetMaskCy(m, Knob(what + " Y##mk" + letter, cfg.MaskCy(m), lo, hi, defY, "Down the frame. 0 = top, 1 = bottom.", "%.3f"));
@@ -3047,8 +3053,8 @@ public sealed class MainWindow : Window, IDisposable
         void Rotation(string tip) => cfg.SetMaskAngle(m, Knob("Rotation##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0f, tip));
         void Squash(string label, string tip)
         {
-            float shown = Math.Clamp(cfg.MaskEllipse(m), 0.15f, 4f);
-            float v = Knob(label + "##mkq" + letter, shown, 0.15f, 4f, 1f, tip);
+            float shown = Math.Clamp(cfg.MaskEllipse(m), 0.05f, 12f);
+            float v = Knob(label + "##mkq" + letter, shown, 0.05f, 12f, 1f, tip, "%.2f", LogSlider);
             if (v != shown) cfg.SetMaskEllipse(m, v);
         }
         void Sides(string label, float def, string tip)
@@ -3068,15 +3074,15 @@ public sealed class MainWindow : Window, IDisposable
         switch (md)
         {
             case 1:
-                cfg.SetMaskCx(m, Knob("Centre X##mk" + letter, cfg.MaskCx(m), 0f, 1f, 0.5f, "Across the frame. 0 = left edge, 1 = right.", "%.3f"));
-                cfg.SetMaskCy(m, Knob("Centre Y##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.45f, "Down the frame. 0 = top, 1 = bottom.", "%.3f"));
-                cfg.SetMaskSize(m, Knob("Radius##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.25f, "Measured in frame HEIGHTS, so the mask keeps its size and its shape\nwhen the export aspect changes.", "%.3f"));
-                cfg.SetMaskEllipse(m, Knob("Squash##mk" + letter, cfg.MaskEllipse(m), 0.15f, 4f, 1.2f, "Height against width. Above 1 is taller than wide \u2014 a head.\nBelow 1 is wider than tall \u2014 a band across the body."));
+                cfg.SetMaskCx(m, Knob("Centre X##mk" + letter, cfg.MaskCx(m), -1f, 2f, 0.5f, "Across the frame. 0 = left edge, 1 = right.\nPast either is off-frame, which is how a big shape reaches in from outside.", "%.3f"));
+                cfg.SetMaskCy(m, Knob("Centre Y##mk" + letter, cfg.MaskCy(m), -1f, 2f, 0.45f, "Down the frame. 0 = top, 1 = bottom.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Radius##mk" + letter, cfg.MaskSize(m), 0.01f, ShapeMax, 0.25f, "Measured in frame HEIGHTS, so the mask keeps its size and its shape\nwhen the export aspect changes. The frame is 0.5 tall in these units.", "%.3f", LogSlider));
+                cfg.SetMaskEllipse(m, Knob("Squash##mk" + letter, cfg.MaskEllipse(m), 0.05f, 12f, 1.2f, "Height against width. Above 1 is taller than wide \u2014 a head.\nBelow 1 is wider than tall \u2014 a band across the body.", "%.2f", LogSlider));
                 cfg.SetMaskAngle(m, Knob("Rotation##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0f, "Turns the ellipse. Does nothing while Squash is exactly 1, because\na circle has no orientation to turn."));
                 break;
             case 2:
-                cfg.SetMaskCx(m, Knob("Edge X##mk" + letter, cfg.MaskCx(m), 0f, 1f, 0.5f, "A point the dividing line passes through.", "%.3f"));
-                cfg.SetMaskCy(m, Knob("Edge Y##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.5f, "A point the dividing line passes through.", "%.3f"));
+                cfg.SetMaskCx(m, Knob("Edge X##mk" + letter, cfg.MaskCx(m), -1f, 2f, 0.5f, "A point the dividing line passes through.", "%.3f"));
+                cfg.SetMaskCy(m, Knob("Edge Y##mk" + letter, cfg.MaskCy(m), -1f, 2f, 0.5f, "A point the dividing line passes through.", "%.3f"));
                 cfg.SetMaskAngle(m, Knob("Direction##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0f, "Turns the divide. The short arrow drawn on screen points INTO the covered\nside, so follow the arrow rather than guessing; 0 covers the left of a\nvertical divide."));
                 break;
             case 3:
@@ -3086,10 +3092,10 @@ public sealed class MainWindow : Window, IDisposable
                     ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), "No depth yet \u2014 this mask covers everything until there is.");
                 break;
             case 4:
-                cfg.SetMaskCx(m, Knob("Centre X##mk" + letter, cfg.MaskCx(m), 0f, 1f, 0.5f, "Across the frame. 0 = left edge, 1 = right.", "%.3f"));
-                cfg.SetMaskCy(m, Knob("Centre Y##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.5f, "Down the frame. 0 = top, 1 = bottom.", "%.3f"));
-                cfg.SetMaskSize(m, Knob("Half-width##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.26f, "Half the width, in frame HEIGHTS, so it keeps its shape when the export aspect changes.", "%.3f"));
-                cfg.SetMaskEllipse(m, Knob("Height ratio##mk" + letter, cfg.MaskEllipse(m), 0.1f, 4f, 1f, "Height against width. 1 is a square, which turned 45 degrees is a diamond."));
+                cfg.SetMaskCx(m, Knob("Centre X##mk" + letter, cfg.MaskCx(m), -1f, 2f, 0.5f, "Across the frame. 0 = left edge, 1 = right. Past either is off-frame.", "%.3f"));
+                cfg.SetMaskCy(m, Knob("Centre Y##mk" + letter, cfg.MaskCy(m), -1f, 2f, 0.5f, "Down the frame. 0 = top, 1 = bottom.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Half-width##mk" + letter, cfg.MaskSize(m), 0.01f, ShapeMax, 0.26f, "Half the width, in frame HEIGHTS, so it keeps its shape when the export aspect changes.", "%.3f", LogSlider));
+                cfg.SetMaskEllipse(m, Knob("Height ratio##mk" + letter, cfg.MaskEllipse(m), 0.02f, 12f, 1f, "Height against width. 1 is a square, which turned 45 degrees is a diamond.\nFar from 1 is a bar: a long thin one turned sideways is a letterbox.", "%.2f", LogSlider));
                 cfg.SetMaskAngle(m, Knob("Rotation##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0f, "Turns the rectangle. 0.785 is 45 degrees."));
                 Round();
                 if (ImGui.SmallButton("Make it a diamond##mkd" + letter))
@@ -3097,9 +3103,9 @@ public sealed class MainWindow : Window, IDisposable
                 break;
             case 5:
             {
-                cfg.SetMaskCx(m, Knob("Centre X##mk" + letter, cfg.MaskCx(m), 0f, 1f, 0.5f, "Across the frame. 0 = left edge, 1 = right.", "%.3f"));
-                cfg.SetMaskCy(m, Knob("Centre Y##mk" + letter, cfg.MaskCy(m), 0f, 1f, 0.5f, "Down the frame. 0 = top, 1 = bottom.", "%.3f"));
-                cfg.SetMaskSize(m, Knob("Outer radius##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.30f, "The outside of the ring, in frame heights.", "%.3f"));
+                cfg.SetMaskCx(m, Knob("Centre X##mk" + letter, cfg.MaskCx(m), -1f, 2f, 0.5f, "Across the frame. 0 = left edge, 1 = right. Past either is off-frame.", "%.3f"));
+                cfg.SetMaskCy(m, Knob("Centre Y##mk" + letter, cfg.MaskCy(m), -1f, 2f, 0.5f, "Down the frame. 0 = top, 1 = bottom.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Outer radius##mk" + letter, cfg.MaskSize(m), 0.01f, ShapeMax, 0.30f, "The outside of the ring, in frame heights.", "%.3f", LogSlider));
                 float shownInner = Math.Clamp(cfg.MaskEllipse(m), 0f, 0.95f);
                 float inner = Knob("Inner size##mk" + letter, shownInner, 0f, 0.95f, 0.6f, "The hole, as a fraction of the outer radius. 0 fills it in.");
                 if (inner != shownInner) cfg.SetMaskEllipse(m, inner);
@@ -3130,7 +3136,7 @@ public sealed class MainWindow : Window, IDisposable
                 break;
             case 9:
                 Centre("Centre", 0.5f);
-                cfg.SetMaskSize(m, Knob("Radius##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.24f, "To the corners, in frame heights.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Radius##mk" + letter, cfg.MaskSize(m), 0.01f, ShapeMax, 0.24f, "To the corners, in frame heights.", "%.3f", LogSlider));
                 Sides("Sides", 6f, "3 is a triangle standing on its base, 4 a square, 6 a hexagon.");
                 Squash("Squash", "Height against width.");
                 Rotation("Turns the polygon. A triangle turned by 3.14 points down.");
@@ -3138,7 +3144,7 @@ public sealed class MainWindow : Window, IDisposable
                 break;
             case 10:
                 Centre("Centre", 0.45f);
-                cfg.SetMaskSize(m, Knob("Radius##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.24f, "To the tips of the points, in frame heights.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Radius##mk" + letter, cfg.MaskSize(m), 0.01f, ShapeMax, 0.24f, "To the tips of the points, in frame heights.", "%.3f", LogSlider));
                 Sides("Points", 5f, "How many points.");
                 Detail("Inner radius", 0.05f, 0.98f, 0.45f, "How deep the notches between the points go, as a fraction of the radius.\nLow is a spiky star, high is nearly a polygon.");
                 Squash("Squash", "Height against width.");
@@ -3149,17 +3155,17 @@ public sealed class MainWindow : Window, IDisposable
                 Centre("Apex", 0f, -0.5f, 1.5f);
                 cfg.SetMaskAngle(m, Knob("Direction##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 1.0f, "Which way it opens. 0 is to the right, 1.57 straight down."));
                 Detail("Opening", 0.01f, 1f, 0.10f, "How wide, as a fraction of a half turn either side: 0.1 is 18 degrees each way,\n0.5 a half plane. An apex off the frame with a narrow opening is a beam.");
-                cfg.SetMaskSize(m, Knob("Reach##mk" + letter, cfg.MaskSize(m), 0.05f, 3f, 1.4f, "How far from the apex it ends, in frame heights. Past the frame is endless.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Reach##mk" + letter, cfg.MaskSize(m), 0.05f, 12f, 1.4f, "How far from the apex it ends, in frame heights. Past the frame is endless.", "%.3f", LogSlider));
                 break;
             case 12:
                 Centre("Through", 0.5f);
                 cfg.SetMaskAngle(m, Knob("Direction##mk" + letter, cfg.MaskAngle(m), -3.15f, 3.15f, 0.35f, "The way ACROSS the bands. 0 gives vertical bands."));
-                cfg.SetMaskSize(m, Knob("Spacing##mk" + letter, cfg.MaskSize(m), 0.01f, 1f, 0.12f, "From one band to the next, in frame heights.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Spacing##mk" + letter, cfg.MaskSize(m), 0.005f, 4f, 0.12f, "From one band to the next, in frame heights.", "%.3f", LogSlider));
                 Detail("Band width", 0.02f, 0.98f, 0.35f, "How much of each step is band.");
                 break;
             case 13:
                 Centre("Centre", 0.5f);
-                cfg.SetMaskSize(m, Knob("Arm reach##mk" + letter, cfg.MaskSize(m), 0.01f, 1.2f, 0.26f, "From the centre to the end of the crossbar, in frame heights.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Arm reach##mk" + letter, cfg.MaskSize(m), 0.01f, ShapeMax, 0.26f, "From the centre to the end of the crossbar, in frame heights.", "%.3f", LogSlider));
                 Squash("Upright length", "The upright against the crossbar. Above 1 is a Latin cross.");
                 Detail("Thickness", 0.02f, 1f, 0.5f, "How thick the bars are against their reach.");
                 Rotation("Turns the cross. 0.785 is a saltire.");
@@ -3167,7 +3173,7 @@ public sealed class MainWindow : Window, IDisposable
                 break;
             case 14:
                 ImGui.TextDisabled("Along the character\u2019s silhouette, by depth. Nothing to place: it follows the pose.");
-                cfg.SetMaskSize(m, Knob("Width##mk" + letter, cfg.MaskSize(m), 0.002f, 0.08f, 0.015f, "How far from the silhouette it reaches, in frame heights.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Width##mk" + letter, cfg.MaskSize(m), 0.001f, 1f, 0.015f, "How far from the silhouette it reaches, in frame heights.", "%.4f", LogSlider));
                 Detail("Side", 0.02f, 1f, 0.5f, "Low keeps the outside, a halo round the figure. High keeps the inside, a rim\nalong it. The middle keeps both.");
                 if (!_live.DepthAvailable)
                     ImGui.TextColored(new Vector4(1f, 0.62f, 0.25f, 1f), "No depth yet \u2014 this mask covers everything until there is.");
@@ -3178,7 +3184,7 @@ public sealed class MainWindow : Window, IDisposable
                 break;
             case 16:
                 Centre("Offset", 0.5f, -1f, 2f);
-                cfg.SetMaskSize(m, Knob("Patch size##mk" + letter, cfg.MaskSize(m), 0.02f, 1f, 0.18f, "Roughly how big one patch is, in frame heights.", "%.3f"));
+                cfg.SetMaskSize(m, Knob("Patch size##mk" + letter, cfg.MaskSize(m), 0.01f, 4f, 0.18f, "Roughly how big one patch is, in frame heights.", "%.3f", LogSlider));
                 Detail("Coverage", 0.02f, 0.98f, 0.5f, "How much of the frame the patches cover.");
                 Squash("Stretch", "Stretches the patches: below 1 into streaks across, above 1 into columns.");
                 Rotation("Turns the stretch.");
@@ -3186,10 +3192,10 @@ public sealed class MainWindow : Window, IDisposable
         }
 
         if (md == 14)
-            cfg.SetMaskFeather(m, Knob("Feather##mk" + letter, cfg.MaskFeather(m), 0.001f, 0.05f, 0.02f,
+            cfg.SetMaskFeather(m, Knob("Feather##mk" + letter, cfg.MaskFeather(m), 0.001f, 0.5f, 0.02f,
                 "How soft the band's outer edge is, up to half its width. Near zero is a crisp\nsticker outline; higher is a glow falling away from the figure.", "%.4f"));
         else
-            cfg.SetMaskFeather(m, Knob("Feather##mk" + letter, cfg.MaskFeather(m), 0.001f, 0.5f, 0.08f, "How far the edge takes to fade out. A hard mask on a photograph reads as a\ncut-out, so this rarely wants to be near zero \u2014 unless it is a frame.", "%.3f"));
+            cfg.SetMaskFeather(m, Knob("Feather##mk" + letter, cfg.MaskFeather(m), 0.001f, 3f, 0.08f, "How far the edge takes to fade out. A hard mask on a photograph reads as a\ncut-out, so this rarely wants to be near zero \u2014 unless it is a frame.", "%.4f", LogSlider));
         bool inv = cfg.MaskInvert(m);
         if (ImGui.Checkbox("Invert##mk" + letter, ref inv)) { cfg.SetMaskInvert(m, inv); _dirty = true; }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(
